@@ -13,7 +13,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/macOS-13.4%2B-lightgrey.svg" alt="macOS 13.4+">
-  <img src="https://img.shields.io/badge/electron-43-blueviolet.svg" alt="Electron">
+  <img src="https://img.shields.io/badge/tauri-2-orange.svg" alt="Tauri"> <img src="https://img.shields.io/badge/rust-1.98-red.svg" alt="Rust">
   <img src="https://img.shields.io/badge/language-es%20%2F%20en-brightgreen.svg" alt="Spanish / English">
 </p>
 
@@ -38,6 +38,9 @@ DaVinci Resolve.
 - **Export SRT** (drag straight onto a Resolve subtitle track) or **FCPXML**
   (import as a title-generator timeline), 25 fps / timecode from zero
 - Minimalist, Pantoraya-style UI with a **light / dark** toggle
+- **Model manager** — switch engines in one tap, download on demand, delete to free space
+- **Two ASR engines**: Whisper (Turbo / Small) and NVIDIA **Parakeet TDT 0.6B v3** (Q8, ~4× faster on Apple Silicon)
+- Native **Rust + Tauri 2** app — a 30 MB binary, no Electron
 
 ---
 
@@ -59,22 +62,24 @@ DaVinci Resolve.
 
 ## Getting started
 
-```bash
-# 1. Install dependencies
-npm install
+Requires the Rust toolchain and the Tauri CLI (`cargo install tauri-cli --version '^2'`).
 
-# 2. Build the whisper.cpp engine (first time only — self-contained, ~0.1s if present)
+```bash
+# 1. Build the whisper.cpp engine (first time only — self-contained, ~0.1s if present)
 npm run prepare:whisper
 
-# 3. Run in development
+# 2. Run in development
 npm start
+
+# 3. Build the macOS app bundle
+npm run build
 ```
 
 Verify and test:
 
 ```bash
-npm run check   # syntax-check every module
-npm test        # subtitle engine tests (grouping, SRT, FCPXML)
+npm run check   # cargo check the Rust backend
+npm test        # subtitle engine tests (grouping, SRT, FCPXML, whisper JSON)
 ```
 
 Requirements: **macOS 13.4+ (Apple Silicon)** or **Windows 10/11 x64**,
@@ -100,39 +105,38 @@ they land in sync on a timeline that starts at zero.
 
 ## Models
 
-The Whisper model downloads on demand the first time you generate subtitles.
-Recommended sizes:
+Models download on demand the first time you generate subtitles, and are
+managed from the **Modelos / Models** card in the header: tap to switch,
+download with progress (stoppable), or delete to free space.
 
-| Model  | RAM/VRAM | Notes                      |
-|--------|----------|----------------------------|
-| `turbo`| ~1.6 GB  | Default, best balance      |
-| `medium`| ~1.5 GB  | More accurate, slower      |
-| `small`| ~466 MB  | Low-end machines           |
+| Model               | Download | Engine      | Notes                          |
+|---------------------|----------|-------------|--------------------------------|
+| Whisper Large v3 Turbo | ~1.6 GB | whisper.cpp | Default, best balance          |
+| Whisper Small       | ~466 MB  | whisper.cpp | Low-end machines               |
+| Parakeet TDT 0.6B v3 | ~681 MB | NeMo (Q8)   | Fastest on Apple Silicon, ES/EN |
 
 ---
 
 ## Project structure
 
 ```
+src-tauri/             Rust backend (Tauri 2)
+  tauri.conf.json      window + bundle config
+  src/
+    main.rs            window, menu, commands
+    whisper.rs         whisper.cpp engine (spawn, parse, progress)
+    media.rs           audio/video file introspection
+    grouping.rs        word timestamps → subtitle clips
+    formats.rs         SRT + FCPXML exporters
+  capabilities/        Tauri permissions
 src/
-  main/
-    main.js            window + IPC
-    lib/
-      whisper.js       whisper.cpp engine (spawn, parse, progress)
-      media.js         audio/video file introspection
-      grouping.js      word timestamps → subtitle clips
-      formats/
-        srt.js         SubRip exporter
-        fcpxml.js      Final Cut Pro XML exporter
-  preload/
-    preload.js         secure bridge (contextBridge)
   renderer/
     index.html         minimal UI
     styles.css
     app.js
+    tauri-bridge.js    window.pantoSRT bridge over Tauri IPC
 scripts/
   prepare-whisper.js   build engine + (optional) models
-tests/                 node --test subtitle engine
 ```
 
 ---

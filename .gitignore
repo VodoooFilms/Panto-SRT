@@ -1,9 +1,12 @@
 node_modules/
 dist/
+src-tauri/target/
+src-tauri/gen/
 build/whisper/whisper-cli
 build/whisper/whisper-cli.exe
 build/whisper/*.bin
 build/whisper/lib/
+build/nemo/
 .vscode/
 .DS_Store
 *.log

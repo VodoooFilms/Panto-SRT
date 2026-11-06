@@ -3,15 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self'; script-src 'self'">
   <title>Panto SRT</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="window-drag-region" aria-hidden="true"></div>
+  <div class="window-drag-region" data-tauri-drag-region aria-hidden="true"></div>
   <main class="shell">
-    <header class="masthead">
-      <span class="brand">Panto SRT <span class="separator">/</span> Automatic Subtitles</span>
+    <header class="masthead" data-tauri-drag-region>
+      <button class="brand-home" id="brandHome" title="Inicio"><span class="brand">Panto SRT <span class="separator">/</span> Automatic Subtitles</span></button>
+      <button class="models-toggle" id="modelsToggle" aria-label="Modelos" title="Modelos">Modelos</button>
       <button class="theme-toggle" id="themeToggle" aria-label="Cambiar a modo claro" title="Cambiar a modo claro">
         <svg class="sun-icon" viewBox="0 0 20 20" aria-hidden="true">
           <circle cx="10" cy="10" r="3.2"></circle>
@@ -23,6 +24,18 @@
       </button>
       <button class="language-toggle" id="languageToggle" aria-label="Cambiar a inglés" title="Cambiar a inglés">ES</button>
     </header>
+
+    <section class="models-panel hidden" id="modelsPanel" aria-label="Modelos">
+      <div class="models-head">
+        <div>
+          <strong id="modelsTitle">Modelos</strong>
+          <span id="modelsSubtitle">Elige el motor de transcripción o libera espacio</span>
+        </div>
+        <button class="icon-button" id="modelsClose" aria-label="Cerrar">×</button>
+      </div>
+      <div id="modelsList"></div>
+      <p class="models-foot" id="modelsFoot">Toca un modelo para usarlo. Al borrar el activo se usará el otro si está descargado.</p>
+    </section>
 
     <section class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="Seleccionar un audio o video">
       <svg class="mic-icon" viewBox="0 0 20 20" aria-hidden="true">
@@ -75,6 +88,7 @@
       <button class="primary hidden" id="exportXmlButton"></button>
     </div>
   </main>
+  <script src="tauri-bridge.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -29,6 +29,17 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## NeMo-Speech.cpp — Parakeet runtime
+
+- Home: https://github.com/NVIDIA/NeMo-Speech.cpp
+- License: Apache-2.0 (ggml components under their respective MIT licenses)
+
+## NVIDIA Parakeet TDT 0.6B v3 — model weights
+
+- Home: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+- License: CC BY 4.0 — © NVIDIA Corporation. Attribution required.
+  https://creativecommons.org/licenses/by/4.0/
+
 ## OpenAI Whisper — model weights
 
 - Home: https://github.com/openai/whisper

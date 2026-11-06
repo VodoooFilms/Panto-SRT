@@ -21,7 +21,20 @@ const TEXT = {
     revealed: 'Mostrar en Finder',
     selectFileFirst: 'Selecciona un audio o video primero.',
     lightTheme: 'Cambiar a modo claro',
-    darkTheme: 'Cambiar a modo oscuro'
+    darkTheme: 'Cambiar a modo oscuro',
+    models: 'Modelos',
+    modelsSubtitle: 'Elige el motor de transcripción o libera espacio',
+    modelsFoot: 'Toca un modelo para usarlo. Al borrar el activo se usará el otro si está descargado.',
+    modelActive: 'Activo',
+    modelReady: 'Listo',
+    modelMissing: 'Sin descargar',
+    modelDownloading: 'descargando…',
+    modelOnDevice: 'en este equipo',
+    useModel: 'Usar este modelo',
+    downloadModel: 'Descargar modelo',
+    deleteModel: 'Borrar modelo',
+    deleteConfirm: (name) => `¿Borrar ${name}? Podrás descargarlo de nuevo cuando quieras.`,
+    stopDownload: 'Detener descarga'
   },
   en: {
     dropTitle: 'Audio to subtitles',
@@ -43,7 +56,20 @@ const TEXT = {
     revealed: 'Reveal in Finder',
     selectFileFirst: 'Select an audio or video file first.',
     lightTheme: 'Switch to light mode',
-    darkTheme: 'Switch to dark mode'
+    darkTheme: 'Switch to dark mode',
+    models: 'Models',
+    modelsSubtitle: 'Choose the transcription engine or free up space',
+    modelsFoot: 'Tap a model to use it. Deleting the active one switches to the other if downloaded.',
+    modelActive: 'Active',
+    modelReady: 'Ready',
+    modelMissing: 'Not downloaded',
+    modelDownloading: 'downloading…',
+    modelOnDevice: 'on this device',
+    useModel: 'Use this model',
+    downloadModel: 'Download model',
+    deleteModel: 'Delete model',
+    deleteConfirm: (name) => `Delete ${name}? You can download it again anytime.`,
+    stopDownload: 'Stop download'
   }
 };
 
@@ -55,7 +81,9 @@ const state = {
   words: null,
   clips: [],
   transcribing: false,
-  lastExport: null
+  lastExport: null,
+  models: [],
+  downloading: {}
 };
 
 const $ = (id) => document.getElementById(id);
@@ -70,16 +98,16 @@ function applyTheme(theme) {
   localStorage.setItem('panto-srt-theme', isDark ? 'dark' : 'light');
 }
 
-const SHELL_PAD_TOP = 46;
-const SHELL_PAD_BOTTOM = 18;
-const SHELL_GAP = 12;
+const SHELL_PAD_TOP = 54;
+const SHELL_PAD_BOTTOM = 24;
+const SHELL_GAP = 16;
 
 function measureContentHeight() {
   const shell = document.querySelector('.shell');
   let total = SHELL_PAD_TOP;
   let first = true;
   for (const child of shell.children) {
-    if (child.classList.contains('hidden')) continue;
+    if (child.classList.contains('hidden') || child.offsetHeight === 0) continue;
     if (!first) total += SHELL_GAP;
     first = false;
     total += child.offsetHeight;
@@ -88,9 +116,13 @@ function measureContentHeight() {
 }
 
 function requestWindowHeight() {
+  // Two deliberate heights, nothing in between: the window hugs the home
+  // content (685 at 560 wide, no dead space under the button) and only
+  // grows when the clip editor appears. Models keeps the current height.
+  if (document.body.classList.contains('models-view')) return;
   const hasEditor = !$('editorPanel').classList.contains('hidden');
-  const height = hasEditor ? 736 : measureContentHeight();
-  window.pantoSRT.setContentHeight(Math.max(220, Math.min(768, height)));
+  const fitted = Math.max(685, Math.min(880, measureContentHeight()));
+  window.pantoSRT.setContentHeight(hasEditor ? 840 : fitted);
 }
 
 function u(key, ...args) {
@@ -110,6 +142,143 @@ function setUiLanguage(lang) {
   $('exportXmlButton').textContent = u('exportXml');
   $('cancelButton').textContent = u('cancel');
   $('regroupButton').textContent = u('regroup');
+  $('modelsToggle').textContent = u('models');
+  $('modelsTitle').textContent = u('models');
+  $('modelsSubtitle').textContent = u('modelsSubtitle');
+  $('modelsFoot').textContent = u('modelsFoot');
+  renderModels();
+}
+
+const MODEL_ICONS = {
+  'whisper-turbo': '<svg viewBox="0 0 20 20"><path d="M3 10h2l2-5 3 10 3-8 2 3h2"/></svg>',
+  'whisper-small': '<svg viewBox="0 0 20 20"><path d="M3 10h2l2-5 3 10 3-8 2 3h2"/></svg>',
+  'parakeet': '<svg viewBox="0 0 20 20"><path d="M4 13V7M7.3 16V4M10.7 13.5v-7M14 16V4M17 11V9"/></svg>'
+};
+const STOP_SVG = '<svg viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" rx="2"/></svg>';
+const CHECK_SVG = '<svg viewBox="0 0 20 20"><path d="m4 10.5 4 4L16 6"/></svg>';
+const TRASH_SVG = '<svg viewBox="0 0 20 20"><path d="M3 5h14M8 5V3.5A.5.5 0 0 1 8.5 3h3a.5.5 0 0 1 .5.5V5m3 0-.7 10a1.5 1.5 0 0 1-1.5 1.4H7.2A1.5 1.5 0 0 1 5.7 15L5 5m4 3.5v5M11 8.5v5"/></svg>';
+const DOWNLOAD_SVG = '<svg viewBox="0 0 20 20"><path d="M10 3v10m0 0 4-4m-4 4L6 9M3.5 16.5h13"/></svg>';
+
+function renderModels() {
+  const list = $('modelsList');
+  if (!list) return;
+  list.textContent = '';
+  for (const model of state.models) {
+    const downloading = state.downloading[model.id];
+    const isDownloading = downloading !== undefined;
+    const row = document.createElement('div');
+    row.className = `model-row${model.active ? '' : ' inactive'}`;
+
+    const icon = document.createElement('div');
+    icon.className = 'model-icon';
+    icon.innerHTML = MODEL_ICONS[model.id] || MODEL_ICONS['whisper-turbo'];
+
+    const copy = document.createElement('div');
+    copy.className = 'model-copy';
+    const name = document.createElement('strong');
+    name.textContent = model.name;
+    const detail = document.createElement('small');
+    detail.textContent = isDownloading
+      ? `${model.engineLabel} · ${u('modelDownloading')}`
+      : `${model.engineLabel} · ES / EN · ${u('modelOnDevice')}`;
+    copy.append(name, detail);
+
+    const status = document.createElement('div');
+    status.className = 'model-status';
+    if (isDownloading) {
+      const pct = document.createElement('span');
+      pct.className = 'model-pct';
+      pct.textContent = `${downloading}% · ${formatBytes((model.size * downloading) / 100)} / ${formatBytes(model.size)}`;
+      const track = document.createElement('div');
+      track.className = 'mini-track';
+      const bar = document.createElement('div');
+      bar.style.width = `${downloading}%`;
+      track.append(bar);
+      status.append(pct, track);
+    } else {
+      const badge = document.createElement('span');
+      badge.className = `model-badge${model.active ? ' active' : ''}`;
+      badge.textContent = model.active ? u('modelActive') : model.downloaded ? u('modelReady') : u('modelMissing');
+      const size = document.createElement('span');
+      size.className = 'model-size';
+      size.textContent = formatBytes(model.size);
+      status.append(badge, size);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'model-actions';
+    const slot = document.createElement('button');
+    if (!model.downloaded && !isDownloading) {
+      slot.innerHTML = DOWNLOAD_SVG;
+      slot.title = u('downloadModel');
+      slot.setAttribute('aria-label', u('downloadModel'));
+      slot.addEventListener('click', (event) => { event.stopPropagation(); downloadModel(model); });
+    } else {
+      slot.className = model.active ? 'check-slot' : 'check-slot empty';
+      slot.innerHTML = CHECK_SVG;
+      slot.title = model.active ? u('modelActive') : u('useModel');
+      slot.setAttribute('aria-label', slot.title);
+      if (isDownloading) slot.disabled = true;
+    }
+    const trash = document.createElement('button');
+    trash.className = 'danger';
+    trash.innerHTML = TRASH_SVG;
+    trash.title = u('deleteModel');
+    trash.setAttribute('aria-label', u('deleteModel'));
+    trash.disabled = !model.downloaded || isDownloading;
+    trash.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      if (!window.confirm(u('deleteConfirm', model.name))) return;
+      try {
+        state.models = await window.pantoSRT.deleteModel(model.id);
+        renderModels();
+      } catch (error) { showError((error && error.message) || 'Error'); }
+    });
+    actions.append(slot, trash);
+
+    if (isDownloading) {
+      const stop = document.createElement('button');
+      stop.className = 'stop-download';
+      stop.innerHTML = STOP_SVG;
+      stop.title = u('stopDownload');
+      stop.setAttribute('aria-label', u('stopDownload'));
+      stop.addEventListener('click', (event) => {
+        event.stopPropagation();
+        window.pantoSRT.cancelDownload();
+      });
+      row.append(icon, copy, stop, status, actions);
+    } else {
+      row.append(icon, copy, status, actions);
+    }
+    row.addEventListener('click', async () => {
+      if (!model.downloaded || model.active || isDownloading) return;
+      try {
+        state.models = await window.pantoSRT.setActiveModel(model.id);
+        renderModels();
+      } catch (error) { showError((error && error.message) || 'Error'); }
+    });
+    list.append(row);
+  }
+}
+
+async function loadModels() {
+  try {
+    state.models = await window.pantoSRT.listModels();
+    renderModels();
+  } catch (_) { /* panel stays empty until the backend answers */ }
+}
+
+async function downloadModel(model) {
+  state.downloading[model.id] = 0;
+  renderModels();
+  try {
+    state.models = await window.pantoSRT.downloadModel(model.id);
+  } catch (error) {
+    if (!error || error.message !== 'cancelled') showError((error && error.message) || 'Error');
+  } finally {
+    delete state.downloading[model.id];
+    renderModels();
+  }
 }
 
 function secondsToStamp(seconds, includeMillis = true) {
@@ -216,6 +385,7 @@ async function pickFromDialog() {
 }
 
 function setFile(file) {
+  document.body.classList.add('has-file');
   state.file = { ...file };
   state.words = null;
   state.clips = [];
@@ -234,6 +404,7 @@ function setFile(file) {
 }
 
 function reset() {
+  document.body.classList.remove('has-file');
   state.file = null;
   state.words = null;
   state.clips = [];
@@ -317,6 +488,35 @@ async function exportSubtitle(format) {
 }
 
 function wireEvents() {
+  const setModelsView = (open) => {
+    $('modelsPanel').classList.toggle('hidden', !open);
+    document.body.classList.toggle('models-view', open);
+    if (open) loadModels();
+    requestWindowHeight();
+  };
+  $('modelsToggle').addEventListener('click', () => {
+    setModelsView($('modelsPanel').classList.contains('hidden'));
+  });
+  $('modelsClose').addEventListener('click', () => setModelsView(false));
+
+  // The whole topnav (brand included) is the window drag handle, like any
+  // native window: dragging starts on pointer-down; the control buttons
+  // (Modelos, theme, language) stay clickable and never start a drag.
+  const startDragOnPointerDown = (event) => {
+    if (event.button !== 0) return;
+    if (event.target.closest('.theme-toggle, .language-toggle, .models-toggle')) return;
+    window.pantoSRT.startWindowDrag();
+  };
+  document.querySelector('.masthead').addEventListener('pointerdown', startDragOnPointerDown);
+  document.querySelector('.window-drag-region').addEventListener('pointerdown', startDragOnPointerDown);
+  $('brandHome').addEventListener('click', () => setModelsView(false));
+  window.pantoSRT.onModelDownloadProgress((payload) => {
+    if (state.downloading[payload.id] !== undefined) {
+      state.downloading[payload.id] = payload.percent;
+      renderModels();
+    }
+  });
+
   $('dropZone').addEventListener('click', pickFromDialog);
   $('removeButton').addEventListener('click', reset);
   $('generateButton').addEventListener('click', generate);
@@ -341,27 +541,10 @@ function wireEvents() {
   });
 
   const dropZone = $('dropZone');
-  let dragDepth = 0;
-  document.addEventListener('dragenter', (event) => {
-    if (!state.file && event.dataTransfer && Array.from(event.dataTransfer.types).includes('Files')) {
-      event.preventDefault();
-      dragDepth += 1;
-      dropZone.classList.add('dragging');
-    }
-  });
-  document.addEventListener('dragleave', () => {
-    dragDepth = Math.max(0, dragDepth - 1);
-    if (!dragDepth) dropZone.classList.remove('dragging');
-  });
-  document.addEventListener('dragover', (event) => {
-    if (!state.file) event.preventDefault();
-  });
-  document.addEventListener('drop', async (event) => {
-    event.preventDefault();
+  // Tauri delivers dropped file paths through the native drag-drop event.
+  window.pantoSRT.onFileDrop(async (filePath) => {
     dropZone.classList.remove('dragging');
-    dragDepth = 0;
-    if (state.file || !event.dataTransfer.files.length) return;
-    const filePath = window.pantoSRT.pathForFile(event.dataTransfer.files[0]);
+    if (state.file || !filePath) return;
     try {
       const details = await window.pantoSRT.inspectMedia(filePath);
       setFile(details);
@@ -393,4 +576,5 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   requestWindowHeight();
   wireEvents();
+  loadModels();
 });

@@ -13,7 +13,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/macOS-13.4%2B-lightgrey.svg" alt="macOS 13.4+">
-  <img src="https://img.shields.io/badge/electron-43-blueviolet.svg" alt="Electron">
+  <img src="https://img.shields.io/badge/tauri-2-orange.svg" alt="Tauri"> <img src="https://img.shields.io/badge/rust-1.98-red.svg" alt="Rust">
   <img src="https://img.shields.io/badge/language-es%20%2F%20en-brightgreen.svg" alt="Español / Inglés">
 </p>
 
@@ -38,6 +38,9 @@ subtítulos limpios, listos para DaVinci Resolve.
 - **Exporta SRT** (arrástralo a una pista de subtítulos de Resolve) o **FCPXML**
   (impórtalo como timeline de títulos), 25 fps / timecode desde cero
 - Interfaz mínima estilo Pantoraya con modo **claro / oscuro**
+- **Gestor de modelos**: cambia de motor con un toque, descarga bajo demanda y borra para liberar espacio
+- **Dos motores ASR**: Whisper (Turbo / Small) y **Parakeet TDT 0.6B v3** de NVIDIA (Q8, ~4× más rápido en Apple Silicon)
+- App nativa en **Rust + Tauri 2**: binario de 30 MB, sin Electron
 
 ---
 
@@ -59,22 +62,24 @@ subtítulos limpios, listos para DaVinci Resolve.
 
 ## Empezar
 
-```bash
-# 1. Instala dependencias
-npm install
+Requiere el toolchain de Rust y el CLI de Tauri (`cargo install tauri-cli --version '^2'`).
 
-# 2. Compila el motor whisper.cpp (solo la primera vez — autocontenido, ~0,1 s si ya existe)
+```bash
+# 1. Compila el motor whisper.cpp (solo la primera vez — autocontenido, ~0,1 s si ya existe)
 npm run prepare:whisper
 
-# 3. Ejecuta en modo desarrollo
+# 2. Ejecuta en modo desarrollo
 npm start
+
+# 3. Construye la app de macOS
+npm run build
 ```
 
 Verifica y prueba:
 
 ```bash
-npm run check   # sintaxis de todos los módulos
-npm test        # tests del motor de subtítulos (grouping, SRT, FCPXML)
+npm run check   # cargo check del backend Rust
+npm test        # tests del motor de subtítulos (grouping, SRT, FCPXML, JSON de Whisper)
 ```
 
 Requisitos: **macOS 13.4+ (Apple Silicon)** o **Windows 10/11 x64**,
@@ -102,39 +107,38 @@ empieza en cero.
 
 ## Modelos
 
-El modelo Whisper se descarga bajo demanda la primera vez que generas
-subtítulos. Tamaños recomendados:
+Los modelos se descargan bajo demanda la primera vez que generas subtítulos
+y se gestionan desde la tarjeta **Modelos** de la cabecera: tocar para
+cambiar, descargar con progreso (detenible) o borrar para liberar espacio.
 
-| Modelo   | RAM/VRAM | Notas                         |
-|----------|----------|-------------------------------|
-| `turbo`  | ~1,6 GB  | Por defecto, mejor equilibrio |
-| `medium` | ~1,5 GB  | Más exacto, más lento         |
-| `small`  | ~466 MB  | Equipos modestos              |
+| Modelo                 | Descarga | Motor       | Notas                            |
+|------------------------|----------|-------------|----------------------------------|
+| Whisper Large v3 Turbo | ~1,6 GB  | whisper.cpp | Por defecto, mejor equilibrio    |
+| Whisper Small          | ~466 MB  | whisper.cpp | Equipos modestos                 |
+| Parakeet TDT 0.6B v3   | ~681 MB  | NeMo (Q8)   | El más rápido en Apple Silicon   |
 
 ---
 
 ## Estructura del proyecto
 
 ```
+src-tauri/             backend Rust (Tauri 2)
+  tauri.conf.json      ventana + bundle
+  src/
+    main.rs            ventana, menú, comandos
+    whisper.rs         motor whisper.cpp (spawn, parseo, progreso)
+    media.rs           inspección de archivos de audio/video
+    grouping.rs        timestamps por palabra → clips de subtítulos
+    formats.rs         exportadores SRT + FCPXML
+  capabilities/        permisos Tauri
 src/
-  main/
-    main.js            ventana + IPC
-    lib/
-      whisper.js       motor whisper.cpp (spawn, parseo, progreso)
-      media.js         inspección de archivos de audio/video
-      grouping.js      timestamps por palabra → clips de subtítulos
-      formats/
-        srt.js         exportador SubRip
-        fcpxml.js      exportador Final Cut Pro XML
-  preload/
-    preload.js         puente seguro (contextBridge)
   renderer/
     index.html         interfaz mínima
     styles.css
     app.js
+    tauri-bridge.js    puente window.pantoSRT sobre IPC de Tauri
 scripts/
   prepare-whisper.js   compila motor + (opcional) modelos
-tests/                 node --test del motor de subtítulos
 ```
 
 ---

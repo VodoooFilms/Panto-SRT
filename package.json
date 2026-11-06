@@ -2,125 +2,20 @@
   "name": "panto-srt",
   "version": "0.1.0",
   "private": true,
-  "description": "Private, offline subtitles from voice — transcription to SRT / FCPXML for DaVinci Resolve",
+  "description": "Private, offline subtitles from voice \u2014 transcription to SRT / FCPXML for DaVinci Resolve",
   "author": "Panto SRT",
   "license": "UNLICENSED",
   "homepage": "https://panto.app/srt",
-  "repository": {
-    "type": "git",
-    "url": ""
-  },
-  "main": "src/main/main.js",
   "scripts": {
     "prepare:whisper": "node scripts/prepare-whisper.js",
     "prestart": "npm run prepare:whisper",
-    "start": "electron .",
-    "check": "node --check src/main/main.js && node --check src/main/lib/whisper.js && node --check src/main/lib/media.js && node --check src/main/lib/grouping.js && node --check src/main/lib/formats/srt.js && node --check src/main/lib/formats/fcpxml.js && node --check src/preload/preload.js && node --check src/renderer/app.js && node --check scripts/prepare-whisper.js",
-    "test": "node --test",
-    "prebuild": "npm run prepare:whisper && npm run check && npm test",
-    "build": "npm run check && npm test && electron-builder --mac dmg --arm64",
-    "build:dir": "npm run check && npm test && electron-builder --mac dir --arm64",
-    "build:win": "npm run prepare:whisper && npm run check && npm test && electron-builder --win nsis --x64"
+    "start": "cargo tauri dev",
+    "check": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "build": "npm run prepare:whisper && cargo tauri build"
   },
-  "build": {
-    "appId": "com.panto.srt",
-    "productName": "Panto SRT",
-    "artifactName": "PantoSRT-${version}-${arch}.${ext}",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "src/**/*",
-      "assets/**/*",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "build/whisper/whisper-cli",
-        "to": "whisper/whisper-cli"
-      },
-      {
-        "from": "build/whisper/whisper-cli.exe",
-        "to": "whisper/whisper-cli.exe"
-      },
-      {
-        "from": "THIRD_PARTY_NOTICES.md",
-        "to": "THIRD_PARTY_NOTICES.md"
-      }
-    ],
-    "mac": {
-      "category": "public.app-category.video",
-      "icon": "assets/icons/panto-srt.icns",
-      "minimumSystemVersion": "13.4",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64"
-          ]
-        }
-      ],
-      "identity": null,
-      "extraResources": [
-        {
-          "from": "assets/locales/en.lproj/InfoPlist.strings",
-          "to": "en.lproj/InfoPlist.strings"
-        },
-        {
-          "from": "assets/locales/es.lproj/InfoPlist.strings",
-          "to": "es.lproj/InfoPlist.strings"
-        }
-      ],
-      "extendInfo": {
-        "CFBundleName": "Panto SRT",
-        "CFBundleDisplayName": "Panto SRT",
-        "NSHumanReadableCopyright": "Copyright © 2026 Panto SRT"
-      }
-    },
-    "win": {
-      "icon": "assets/icons/panto-srt.png",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "requestedExecutionLevel": "asInvoker"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "Panto SRT",
-      "uninstallDisplayName": "Panto SRT"
-    },
-    "dmg": {
-      "title": "Panto SRT ${version}",
-      "iconSize": 128,
-      "window": {
-        "width": 540,
-        "height": 380
-      },
-      "contents": [
-        {
-          "x": 150,
-          "y": 190,
-          "type": "file"
-        },
-        {
-          "x": 390,
-          "y": 190,
-          "type": "link",
-          "path": "/Applications"
-        }
-      ]
-    }
-  },
-  "devDependencies": {
-    "electron": "^43.1.1",
-    "electron-builder": "^26.15.3"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VodoooFilms/Panto-SRT"
   }
 }

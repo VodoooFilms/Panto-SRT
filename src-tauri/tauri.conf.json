@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Panto SRT",
+  "version": "0.1.0",
+  "identifier": "com.panto.srt",
+  "build": {
+    "frontendDist": "../src/renderer"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Panto SRT",
+        "width": 560,
+        "height": 685,
+        "minWidth": 500,
+        "minHeight": 260,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "backgroundColor": "#1d1d1f"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": [
+      "../assets/icons/panto-srt.icns",
+      "../assets/icons/panto-srt.png"
+    ],
+    "category": "public.app-category.video",
+    "resources": {
+      "../build/whisper/whisper-cli": "whisper/whisper-cli",
+      "../build/nemo": "nemo",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
+    },
+    "macOS": {
+      "minimumSystemVersion": "13.4"
+    }
+  }
+}
