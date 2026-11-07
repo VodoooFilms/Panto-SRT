@@ -1,14 +1,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod convert;
 mod formats;
 mod grouping;
 mod media;
 mod models;
 mod parakeet;
+mod plan;
+mod process;
+mod upscale;
 mod whisper;
 
 use grouping::{Clip, GroupOptions, Word};
-use serde::Deserialize;
+use process::ActiveSlot;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,6 +29,8 @@ struct AppState {
     download_cancelled: Arc<AtomicBool>,
     download_pid: Arc<Mutex<Option<u32>>>,
     download_in_progress: Arc<AtomicBool>,
+    convert_process: ActiveSlot,
+    upscale_process: ActiveSlot,
 }
 
 impl Default for AppState {
@@ -35,6 +42,8 @@ impl Default for AppState {
             download_cancelled: Arc::new(AtomicBool::new(false)),
             download_pid: Arc::new(Mutex::new(None)),
             download_in_progress: Arc::new(AtomicBool::new(false)),
+            convert_process: Arc::new(Mutex::new(None)),
+            upscale_process: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -97,20 +106,6 @@ struct ExportOptions {
 }
 
 #[tauri::command]
-fn set_content_height(app: AppHandle, height: f64) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        let value = height.round().clamp(260.0, 880.0);
-        if let Ok(size) = window.inner_size() {
-            if let Ok(scale) = window.scale_factor() {
-                let logical = size.to_logical::<f64>(scale);
-                let _ = window.set_size(tauri::LogicalSize::new(logical.width, value));
-            }
-        }
-    }
-    Ok(())
-}
-
-#[tauri::command]
 fn set_language(app: AppHandle, state: State<'_, AppState>, language: String) -> bool {
     if language != "es" && language != "en" {
         return false;
@@ -120,6 +115,269 @@ fn set_language(app: AppHandle, state: State<'_, AppState>, language: String) ->
         let _ = app.set_menu(menu);
     }
     true
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SubtitleFile {
+    path: String,
+    name: String,
+}
+
+fn extensions_without_dot<'a>(extensions: &'a [&'a str]) -> Vec<&'a str> {
+    extensions
+        .iter()
+        .map(|extension| extension.trim_start_matches('.'))
+        .collect()
+}
+
+fn convert_extensions(converter: &str) -> Vec<&str> {
+    match converter {
+        "mp4" => extensions_without_dot(media::VIDEO_EXTENSIONS),
+        "mp3" => extensions_without_dot(media::VIDEO_EXTENSIONS)
+            .into_iter()
+            .chain(extensions_without_dot(media::AUDIO_EXTENSIONS))
+            .collect(),
+        "jpg" => extensions_without_dot(media::IMAGE_EXTENSIONS),
+        _ => Vec::new(),
+    }
+}
+
+#[tauri::command]
+fn select_convert_files(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    converter: String,
+) -> Result<Vec<media::FileDetails>, String> {
+    let extensions = convert_extensions(&converter);
+    if extensions.is_empty() {
+        return Ok(Vec::new());
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .set_title(text(
+            &state,
+            "Selecciona uno o varios archivos",
+            "Select one or more files",
+        ))
+        .add_filter(
+            text(&state, "Archivos compatibles", "Compatible files"),
+            &extensions,
+        )
+        .pick_files(move |paths| {
+            let _ = tx.send(paths);
+        });
+    let picked = rx.recv().map_err(|e| e.to_string())?;
+    let mut details = Vec::new();
+    for file_path in picked.unwrap_or_default() {
+        let path = file_path.to_string();
+        if media::is_convertible(&path) && Path::new(&path).exists() {
+            details.push(media::file_details(&path)?);
+        }
+    }
+    Ok(details)
+}
+
+#[tauri::command]
+async fn inspect_convert_files(paths: Vec<String>) -> Result<Vec<media::FileDetails>, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<media::FileDetails>, String> {
+        let mut details = Vec::new();
+        for path in paths {
+            if !media::is_convertible(&path) || !Path::new(&path).exists() {
+                return Err("UNSUPPORTED".to_string());
+            }
+            details.push(media::file_details(&path)?);
+        }
+        Ok(details)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn select_convert_subtitle(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<SubtitleFile>, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .set_title(text(
+            &state,
+            "Selecciona subtítulos SRT",
+            "Select SRT subtitles",
+        ))
+        .add_filter("SubRip", &["srt"])
+        .pick_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let picked = rx.recv().map_err(|e| e.to_string())?;
+    Ok(picked.and_then(|file_path| {
+        let path = file_path.to_string();
+        convert::subtitle_file(&path).map(|valid| SubtitleFile {
+            path: valid.to_string_lossy().into_owned(),
+            name: Path::new(&path)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        })
+    }))
+}
+
+#[tauri::command]
+fn inspect_convert_subtitle(path: String) -> Result<SubtitleFile, String> {
+    convert::subtitle_file(&path)
+        .map(|valid| SubtitleFile {
+            name: Path::new(&path)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            path: valid.to_string_lossy().into_owned(),
+        })
+        .ok_or_else(|| "UNSUPPORTED".to_string())
+}
+
+#[tauri::command]
+fn choose_convert_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .set_title(text(
+            &state,
+            "Selecciona la carpeta de salida",
+            "Select the output folder",
+        ))
+        .pick_folder(move |path| {
+            let _ = tx.send(path);
+        });
+    let picked = rx.recv().map_err(|e| e.to_string())?;
+    Ok(picked.map(|path| path.to_string()))
+}
+
+#[tauri::command]
+async fn convert_media(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request: convert::ConvertRequest,
+) -> Result<convert::ConversionResult, String> {
+    let lang = lang(&state);
+    let slot = Arc::clone(&state.convert_process);
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        convert::convert(&app_handle, &slot, request, &lang)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn cancel_conversion(state: State<'_, AppState>) -> bool {
+    process::cancel(&state.convert_process)
+}
+
+#[tauri::command]
+fn select_upscale_video(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<media::FileDetails>, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .set_title(text(&state, "Selecciona un vídeo", "Select a video"))
+        .add_filter(
+            text(&state, "Vídeos", "Videos"),
+            &extensions_without_dot(media::VIDEO_EXTENSIONS),
+        )
+        .pick_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let picked = rx.recv().map_err(|e| e.to_string())?;
+    match picked {
+        Some(file_path) => {
+            let path = file_path.to_string();
+            if !media::is_video(&path) || !Path::new(&path).exists() {
+                return Err("UNSUPPORTED".to_string());
+            }
+            Ok(Some(media::file_details(&path)?))
+        }
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+async fn inspect_upscale_video(path: String) -> Result<media::FileDetails, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !media::is_video(&path) || !Path::new(&path).exists() {
+            return Err("UNSUPPORTED".to_string());
+        }
+        media::file_details(&path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn choose_upscale_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .set_title(text(
+            &state,
+            "Selecciona la carpeta de salida",
+            "Select the output folder",
+        ))
+        .pick_folder(move |path| {
+            let _ = tx.send(path);
+        });
+    let picked = rx.recv().map_err(|e| e.to_string())?;
+    Ok(picked.map(|path| path.to_string()))
+}
+
+#[tauri::command]
+fn compute_upscale_plan(
+    width: u32,
+    height: u32,
+    duration: f64,
+    audio_kbps: u32,
+    target: String,
+    mode: String,
+) -> plan::Plan {
+    plan::compute_plan(width, height, duration, audio_kbps, &target, &mode)
+}
+
+#[tauri::command]
+async fn start_upscale(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request: upscale::UpscaleRequest,
+) -> Result<upscale::UpscaleResult, String> {
+    let slot = Arc::clone(&state.upscale_process);
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        upscale::start(&app_handle, &slot, request)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn cancel_upscale(state: State<'_, AppState>) -> bool {
+    process::cancel(&state.upscale_process)
+}
+
+#[tauri::command]
+fn ffmpeg_status() -> serde_json::Value {
+    match media::ffmpeg_path() {
+        Some(path) => json!({ "available": true, "path": path }),
+        None => json!({ "available": false, "path": null }),
+    }
 }
 
 #[tauri::command]
@@ -372,8 +630,8 @@ async fn transcribe_media(
             } else if message.starts_with("model-missing:") {
                 Err(text(
                     &state,
-                    "El modelo Whisper aún no está descargado. Panto SRT lo descargará ahora.",
-                    "The Whisper model is not downloaded yet. Panto SRT will download it now.",
+                    "El modelo Whisper aún no está descargado. Panto Studio lo descargará ahora.",
+                    "The Whisper model is not downloaded yet. Panto Studio will download it now.",
                 ))
             } else {
                 Err(message)
@@ -486,16 +744,16 @@ fn build_menu(app: &AppHandle, language: &str) -> tauri::Result<tauri::menu::Men
     let pkg = app.package_info();
     let about = PredefinedMenuItem::about(
         app,
-        Some(if es { "Acerca de Panto SRT" } else { "About Panto SRT" }),
+        Some(if es { "Acerca de Panto Studio" } else { "About Panto Studio" }),
         Some(AboutMetadata {
-            name: Some("Panto SRT".to_string()),
+            name: Some("Panto Studio".to_string()),
             version: Some(pkg.version.to_string()),
-            copyright: Some("Copyright © 2026 Panto SRT".to_string()),
+            copyright: Some("Copyright © 2026 Panto Studio".to_string()),
             credits: Some(
                 if es {
-                    "Panto SRT transcribe audio a subtítulos con timestamps reales, 100% local y privado. Exporta SRT y FCPXML para DaVinci Resolve."
+                    "Panto Studio convierte video, audio e imágenes, escala a 4K y transcribe voz a subtítulos. Todo ocurre 100% en tu equipo, sin cuentas ni nube."
                 } else {
-                    "Panto SRT turns voice into subtitles with real word-level timestamps, fully local and private. Exports SRT and FCPXML for DaVinci Resolve."
+                    "Panto Studio converts video, audio and images, upscales to 4K, and turns voice into subtitles. Everything runs 100% on your device, with no accounts or cloud."
                 }
                 .to_string(),
             ),
@@ -504,7 +762,7 @@ fn build_menu(app: &AppHandle, language: &str) -> tauri::Result<tauri::menu::Men
     )?;
     let app_menu = Submenu::with_items(
         app,
-        "Panto SRT",
+        "Panto Studio",
         true,
         &[
             &about,
@@ -512,9 +770,9 @@ fn build_menu(app: &AppHandle, language: &str) -> tauri::Result<tauri::menu::Men
             &PredefinedMenuItem::hide(
                 app,
                 Some(if es {
-                    "Ocultar Panto SRT"
+                    "Ocultar Panto Studio"
                 } else {
-                    "Hide Panto SRT"
+                    "Hide Panto Studio"
                 }),
             )?,
             &PredefinedMenuItem::hide_others(
@@ -526,9 +784,9 @@ fn build_menu(app: &AppHandle, language: &str) -> tauri::Result<tauri::menu::Men
             &PredefinedMenuItem::quit(
                 app,
                 Some(if es {
-                    "Salir de Panto SRT"
+                    "Salir de Panto Studio"
                 } else {
-                    "Quit Panto SRT"
+                    "Quit Panto Studio"
                 }),
             )?,
         ],
@@ -585,7 +843,6 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            set_content_height,
             set_language,
             select_media,
             inspect_media,
@@ -598,8 +855,22 @@ fn main() {
             set_active_model,
             delete_model,
             download_model,
-            cancel_download
+            cancel_download,
+            select_convert_files,
+            inspect_convert_files,
+            select_convert_subtitle,
+            inspect_convert_subtitle,
+            choose_convert_folder,
+            convert_media,
+            cancel_conversion,
+            select_upscale_video,
+            inspect_upscale_video,
+            choose_upscale_folder,
+            compute_upscale_plan,
+            start_upscale,
+            cancel_upscale,
+            ffmpeg_status
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Panto SRT");
+        .expect("error while running Panto Studio");
 }

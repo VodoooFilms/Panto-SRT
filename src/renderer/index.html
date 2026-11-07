@@ -4,15 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self'; script-src 'self'">
-  <title>Panto SRT</title>
+  <title>Panto Studio</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="window-drag-region" data-tauri-drag-region aria-hidden="true"></div>
+
   <main class="shell">
     <header class="masthead" data-tauri-drag-region>
-      <button class="brand-home" id="brandHome" title="Inicio"><span class="brand">Panto SRT <span class="separator">/</span> Automatic Subtitles</span></button>
-      <button class="models-toggle" id="modelsToggle" aria-label="Modelos" title="Modelos">Modelos</button>
+      <span class="brand">
+        <svg class="brand-mark" viewBox="0 0 20 20" aria-hidden="true">
+          <rect x="1.5" y="2.5" width="11" height="6" rx="1.6"></rect>
+          <rect x="7.5" y="11.5" width="11" height="6" rx="1.6"></rect>
+          <path d="M8.5 7v5.2M6.6 10.6 8.5 12.5l1.9-1.9"></path>
+        </svg>
+        <span>Panto <em>Studio</em></span>
+      </span>
+
+      <nav class="studio-tabs" role="tablist" aria-label="Secciones">
+        <button class="studio-tab active" data-tab="convert" role="tab" aria-selected="true">Convertir</button>
+        <button class="studio-tab" data-tab="upscale" role="tab" aria-selected="false" tabindex="-1">Upscale</button>
+        <button class="studio-tab" data-tab="subtitles" role="tab" aria-selected="false" tabindex="-1">Subtítulos</button>
+      </nav>
+
       <button class="theme-toggle" id="themeToggle" aria-label="Cambiar a modo claro" title="Cambiar a modo claro">
         <svg class="sun-icon" viewBox="0 0 20 20" aria-hidden="true">
           <circle cx="10" cy="10" r="3.2"></circle>
@@ -25,70 +39,258 @@
       <button class="language-toggle" id="languageToggle" aria-label="Cambiar a inglés" title="Cambiar a inglés">ES</button>
     </header>
 
-    <section class="models-panel hidden" id="modelsPanel" aria-label="Modelos">
-      <div class="models-head">
-        <div>
-          <strong id="modelsTitle">Modelos</strong>
-          <span id="modelsSubtitle">Elige el motor de transcripción o libera espacio</span>
+    <!-- Convertir -->
+    <section class="tab-view" id="tab-convert" role="tabpanel" aria-label="Convertir">
+      <div class="tab-scroll">
+        <nav class="converter-tabs" id="converterTabs" role="tablist" aria-label="Tipo de conversión">
+          <button class="converter-tab active" id="mp4Tab" data-converter="mp4" role="tab" aria-selected="true">MP4</button>
+          <button class="converter-tab" id="mp3Tab" data-converter="mp3" role="tab" aria-selected="false" tabindex="-1">MP3</button>
+          <button class="converter-tab" id="jpgTab" data-converter="jpg" role="tab" aria-selected="false" tabindex="-1">JPG</button>
+        </nav>
+
+        <section class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="Seleccionar un video">
+          <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 16V4M7 9l5-5 5 5"></path>
+            <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
+          </svg>
+          <strong id="dropTitle">Convierte videos a MP4</strong>
+          <span id="dropHint">arrastra un video o haz clic para abrir</span>
+        </section>
+
+        <section class="file-card hidden" id="fileCard">
+          <img class="file-thumbnail hidden" id="fileThumbnail" alt="">
+          <div class="file-mark" id="fileMark" data-format="MP4" aria-hidden="true"></div>
+          <div class="file-copy">
+            <strong id="fileName"></strong>
+          </div>
+          <div class="file-size"><small id="originalLabel">Original</small><strong id="fileSize"></strong></div>
+          <button class="icon-button" id="removeButton" aria-label="Quitar archivo">×</button>
+        </section>
+
+        <section class="subtitle-picker hidden" id="subtitlePicker" tabindex="0" role="button" aria-label="Añadir subtítulos SRT opcionales">
+          <span class="subtitle-label" id="subtitleLabel">+ Añadir subtítulos SRT <small>(opcional)</small></span>
+          <span class="subtitle-file hidden" id="subtitleFile"></span>
+          <button class="subtitle-remove hidden" id="subtitleRemove" aria-label="Quitar subtítulos">×</button>
+        </section>
+
+        <section class="profiles" id="profilesSection" aria-label="Calidad del video">
+          <div class="profile-grid" id="profileGrid"></div>
+        </section>
+
+        <section class="progress hidden" id="progressPanel" aria-live="polite">
+          <div class="progress-copy"><strong id="progressLabel">Preparando…</strong><span id="progressPercent">0%</span></div>
+          <div class="track"><div id="progressBar"></div></div>
+          <span id="progressTime"></span>
+        </section>
+
+        <section class="result hidden" id="resultPanel" aria-live="polite">
+          <span class="check">✓</span>
+          <div><strong id="resultTitle">Listo</strong><span id="resultDetails"></span></div>
+        </section>
+
+        <p class="error hidden" id="errorMessage" role="alert"></p>
+      </div>
+
+      <div class="actions">
+        <button class="secondary hidden" id="cancelButton">Cancelar</button>
+        <button class="secondary hidden" id="anotherButton">Convertir otro</button>
+        <button class="primary" id="convertButton" disabled>Convertir a MP4</button>
+        <button class="primary success hidden" id="revealButton">Mostrar en Finder</button>
+      </div>
+
+      <div class="modal-backdrop hidden" id="outputModal">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="outputModalTitle">
+          <strong id="outputModalTitle">¿Dónde guardar las conversiones?</strong>
+          <p id="outputModalDetail">Puedes guardarlas junto a los originales o elegir otra carpeta.</p>
+          <div class="modal-actions">
+            <button class="secondary" id="outputSame">Misma carpeta</button>
+            <button class="primary" id="outputChoose">Elegir carpeta…</button>
+            <button class="text-button" id="outputCancel">Cancelar</button>
+          </div>
         </div>
-        <button class="icon-button" id="modelsClose" aria-label="Cerrar">×</button>
       </div>
-      <div id="modelsList"></div>
-      <p class="models-foot" id="modelsFoot">Toca un modelo para usarlo. Al borrar el activo se usará el otro si está descargado.</p>
     </section>
 
-    <section class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="Seleccionar un audio o video">
-      <svg class="mic-icon" viewBox="0 0 20 20" aria-hidden="true">
-        <rect x="6.5" y="2.5" width="7" height="10" rx="3.2"></rect>
-        <path d="M4.5 10a5.5 5.5 0 0 0 11 0"></path>
-        <path d="M10 15.5V17"></path>
-      </svg>
-      <strong id="dropTitle">Audio a subtítulos</strong>
-      <span id="dropHint">arrastra un archivo o haz clic para abrir</span>
-    </section>
+    <!-- Upscale -->
+    <section class="tab-view hidden" id="tab-upscale" role="tabpanel" aria-label="Upscale">
+      <div class="tab-scroll">
+        <div class="tab-toolbar">
+          <span class="engine-badge" id="upEngineBadge" title="Escalador Lanczos">Lanczos</span>
+        </div>
 
-    <section class="file-card hidden" id="fileCard">
-      <div class="file-mark" id="fileMark" aria-hidden="true">SRT</div>
-      <div class="file-copy">
-        <strong id="fileName"></strong>
-        <small id="fileMeta"></small>
+        <section class="media-card input-card" id="upInputCard" tabindex="0" role="button" aria-label="Seleccionar un vídeo">
+          <div class="preview">
+            <div class="preview-empty" id="upInputEmpty">
+              <svg class="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 16V4M7 9l5-5 5 5"></path>
+                <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
+              </svg>
+              <span id="upDropTitle">Arrastra un vídeo</span>
+              <small id="upDropHint">o haz clic para abrir</small>
+            </div>
+            <img class="preview-image hidden" id="upInputThumb" alt="">
+            <span class="preview-badge hidden" id="upInputBadge"></span>
+          </div>
+          <div class="media-info">
+            <span class="kicker" id="upInputKicker">Entrada</span>
+            <strong class="media-name" id="upInputName">Sin archivo</strong>
+            <div class="media-meta">
+              <span class="media-dims" id="upInputDimensions">—</span>
+              <span class="dot"></span>
+              <span id="upInputSize">—</span>
+            </div>
+            <span class="media-sub" id="upInputDetail">MP4 · MOV · MKV · WEBM · AVI</span>
+          </div>
+          <button class="card-action hidden" id="upRemoveButton" aria-label="Quitar vídeo" title="Quitar vídeo">×</button>
+        </section>
+
+        <section class="settings" aria-label="Resolución de salida">
+          <div class="setting-row">
+            <div class="segmented" id="upTargetGroup" role="group" aria-label="Resolución de salida">
+              <button type="button" data-target="720">720p</button>
+              <button type="button" data-target="1080" class="active">1080p</button>
+              <button type="button" data-target="1440">1440p</button>
+              <button type="button" data-target="2160">4K</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="media-card output-card" id="upOutputCard" aria-live="polite">
+          <div class="preview output-preview">
+            <div class="preview-empty output-empty" id="upOutputEmpty">
+              <span class="target-chip" id="upOutputTargetChip">1080p</span>
+              <span class="target-dims" id="upOutputTargetDims">1920 × 1080</span>
+            </div>
+            <img class="preview-image hidden" id="upOutputThumb" alt="">
+            <span class="preview-badge hidden" id="upOutputBadge"></span>
+          </div>
+          <div class="media-info">
+            <span class="kicker" id="upOutputKicker">Salida</span>
+            <strong class="media-name" id="upOutputName">—</strong>
+            <div class="media-meta">
+              <span class="media-dims" id="upOutputDimensions">—</span>
+              <span class="dot"></span>
+              <span id="upOutputSize">—</span>
+            </div>
+            <span class="media-sub" id="upOutputDetail">Lanczos · H.264</span>
+          </div>
+          <button class="card-action folder-action" id="upFolderButton" aria-label="Elegir carpeta de salida" title="Elegir carpeta de salida">
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M2.5 5.5a1.5 1.5 0 0 1 1.5-1.5h3.2l1.6 1.8H16a1.5 1.5 0 0 1 1.5 1.5v7.2A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5Z"></path>
+            </svg>
+          </button>
+        </section>
+
+        <section class="settings mode-settings" aria-label="Ajuste de imagen">
+          <div class="setting-row">
+            <div class="segmented" id="upModeGroup" role="group" aria-label="Ajuste de imagen">
+              <button type="button" data-mode="pad">Barras negras</button>
+              <button type="button" data-mode="crop" class="active">Recortar</button>
+              <button type="button" data-mode="stretch">Estirar</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="status" id="upStatusPanel" aria-live="polite">
+          <div class="status-row">
+            <span class="status-icon" id="upStatusIcon"></span>
+            <strong class="status-title" id="upStatusTitle">Lanczos</strong>
+            <span class="status-detail" id="upStatusDetail">Escalado de alta calidad</span>
+            <span class="status-right" id="upStatusRight"></span>
+          </div>
+          <div class="track hidden" id="upProgressTrack"><div id="upProgressBar"></div></div>
+        </section>
+
+        <p class="footer-note" id="upFooterNote">Procesado en tu equipo · sin subir nada</p>
       </div>
-      <button class="icon-button" id="removeButton" aria-label="Quitar archivo">×</button>
-    </section>
 
-    <section class="progress hidden" id="progressPanel" aria-live="polite">
-      <div class="progress-copy">
-        <strong id="progressLabel">Preparando…</strong>
-        <span id="progressPercent">0%</span>
+      <div class="actions">
+        <button class="secondary hidden" id="upAnotherButton">Escalar otro</button>
+        <button class="secondary hidden" id="upCancelButton">Cancelar</button>
+        <button class="primary" id="upConvertButton" disabled>Escalar a 1080p</button>
+        <button class="primary success hidden" id="upRevealButton">Mostrar en Finder</button>
       </div>
-      <div class="track"><div id="progressBar"></div></div>
-      <span id="progressTime"></span>
     </section>
 
-    <section class="editor hidden" id="editorPanel" aria-live="polite">
-      <div class="editor-head">
-        <span id="editorCount"></span>
-        <button class="text-button" id="regroupButton"></button>
+    <!-- Subtítulos -->
+    <section class="tab-view hidden" id="tab-subtitles" role="tabpanel" aria-label="Subtítulos">
+      <div class="tab-toolbar sub-toolbar">
+        <span class="sub-brand">Panto SRT <span class="separator">/</span> Automatic Subtitles</span>
+        <button class="models-toggle" id="stModelsToggle" aria-label="Modelos" title="Modelos">Modelos</button>
       </div>
-      <div class="clip-list" id="clipList"></div>
+
+      <div class="tab-scroll">
+        <section class="drop-zone sub-drop" id="stDropZone" tabindex="0" role="button" aria-label="Seleccionar un audio o video">
+          <svg class="mic-icon" viewBox="0 0 20 20" aria-hidden="true">
+            <rect x="6.5" y="2.5" width="7" height="10" rx="3.2"></rect>
+            <path d="M4.5 10a5.5 5.5 0 0 0 11 0"></path>
+            <path d="M10 15.5V17"></path>
+          </svg>
+          <strong id="stDropTitle">Audio a subtítulos</strong>
+          <span id="stDropHint">arrastra un archivo o haz clic para abrir</span>
+        </section>
+
+        <section class="file-card hidden" id="stFileCard">
+          <div class="file-mark" id="stFileMark" aria-hidden="true">SRT</div>
+          <div class="file-copy">
+            <strong id="stFileName"></strong>
+            <small id="stFileMeta"></small>
+          </div>
+          <button class="icon-button" id="stRemoveButton" aria-label="Quitar archivo">×</button>
+        </section>
+
+        <section class="progress hidden" id="stProgressPanel" aria-live="polite">
+          <div class="progress-copy">
+            <strong id="stProgressLabel">Preparando…</strong>
+            <span id="stProgressPercent">0%</span>
+          </div>
+          <div class="track"><div id="stProgressBar"></div></div>
+          <span id="stProgressTime"></span>
+        </section>
+
+        <section class="editor hidden" id="stEditorPanel" aria-live="polite">
+          <div class="editor-head">
+            <span id="stEditorCount"></span>
+            <button class="text-button" id="stRegroupButton"></button>
+          </div>
+          <div class="clip-list" id="stClipList"></div>
+        </section>
+
+        <section class="result hidden" id="stResultPanel" aria-live="polite">
+          <span class="check">✓</span>
+          <div><strong id="stResultTitle">Listo</strong><span id="stResultDetails"></span></div>
+          <button class="icon-button hidden" id="stResultReveal" aria-label="Mostrar archivo">⌘</button>
+        </section>
+
+        <p class="error hidden" id="stErrorMessage" role="alert"></p>
+      </div>
+
+      <div class="actions">
+        <button class="secondary hidden" id="stCancelButton">Cancelar</button>
+        <button class="primary" id="stGenerateButton" disabled>Generar subtítulos</button>
+        <button class="primary hidden" id="stExportSrtButton"></button>
+        <button class="primary hidden" id="stExportXmlButton"></button>
+      </div>
+
+      <section class="models-panel hidden" id="stModelsPanel" aria-label="Modelos">
+        <div class="models-head">
+          <div>
+            <strong id="stModelsTitle">Modelos</strong>
+            <span id="stModelsSubtitle">Elige el motor de transcripción o libera espacio</span>
+          </div>
+          <button class="icon-button" id="stModelsClose" aria-label="Cerrar">×</button>
+        </div>
+        <div id="stModelsList"></div>
+        <p class="models-foot" id="stModelsFoot">Toca un modelo para usarlo. Al borrar el activo se usará el otro si está descargado.</p>
+      </section>
     </section>
-
-    <section class="result hidden" id="resultPanel" aria-live="polite">
-      <span class="check">✓</span>
-      <div><strong id="resultTitle">Listo</strong><span id="resultDetails"></span></div>
-      <button class="icon-button hidden" id="resultReveal" aria-label="Mostrar archivo">⌘</button>
-    </section>
-
-    <p class="error hidden" id="errorMessage" role="alert"></p>
-
-    <div class="actions">
-      <button class="secondary hidden" id="cancelButton">Cancelar</button>
-      <button class="primary" id="generateButton" disabled>Generar subtítulos</button>
-      <button class="primary hidden" id="exportSrtButton"></button>
-      <button class="primary hidden" id="exportXmlButton"></button>
-    </div>
   </main>
+
+  <script src="utils.js"></script>
   <script src="tauri-bridge.js"></script>
+  <script src="convert.js"></script>
+  <script src="upscale.js"></script>
+  <script src="subtitles.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

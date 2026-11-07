@@ -1,17 +1,30 @@
 'use strict';
 
-// Tauri bridge: exposes the same `window.pantoSRT` API the Electron preload
-// used to provide, backed by Tauri commands and events.
+// Tauri bridge for Panto Studio. Exposes the same API shapes the three
+// original apps used, backed by the unified Rust commands and events.
 (function () {
   const tauri = window.__TAURI__;
   const invoke = tauri.core.invoke;
   const listen = tauri.event.listen;
 
+  function subscribe(event, callback) {
+    let unlisten = null;
+    listen(event, (payload) => callback(payload.payload))
+      .then((stop) => { unlisten = stop; })
+      .catch(() => {});
+    return () => { if (unlisten) unlisten(); };
+  }
+
   let fileDropCallback = null;
   if (tauri.window && tauri.window.getCurrentWindow) {
     tauri.window.getCurrentWindow().onDragDropEvent((event) => {
-      if (event.payload && event.payload.type === 'drop' && event.payload.paths && event.payload.paths.length) {
-        if (fileDropCallback) fileDropCallback(event.payload.paths[0]);
+      const payload = event.payload || {};
+      if (payload.type === 'drop' && payload.paths && payload.paths.length) {
+        if (window.PantoStudio && window.PantoStudio.handleDrop) {
+          window.PantoStudio.handleDrop(payload.paths);
+        } else if (fileDropCallback) {
+          fileDropCallback(payload.paths[0]);
+        }
       }
     }).catch(() => {});
   }
@@ -23,35 +36,44 @@
     transcribeMedia: (filePath, options) => invoke('transcribe_media', { filePath, options }),
     cancelTranscription: () => invoke('cancel_transcription'),
     groupClips: (words, options) => invoke('group_clips', { words, options }),
-    exportSubtitles: (sourcePath, format, clips, options) => invoke('export_subtitles', { sourcePath, format, clips, options }),
+    exportSubtitles: (sourcePath, format, clips, options) =>
+      invoke('export_subtitles', { sourcePath, format, clips, options }),
     showInFolder: (filePath) => invoke('show_in_folder', { filePath }),
     setLanguage: (language) => invoke('set_language', { language }),
-    setContentHeight: (height) => { invoke('set_content_height', { height }).catch(() => {}); },
     listModels: () => invoke('list_models'),
     setActiveModel: (modelId) => invoke('set_active_model', { modelId }),
     deleteModel: (modelId) => invoke('delete_model', { modelId }),
     downloadModel: (modelId) => invoke('download_model', { modelId }),
     cancelDownload: () => invoke('cancel_download'),
-    onModelDownloadProgress: (callback) => {
-      let unlisten = () => {};
-      listen('model-download-progress', (event) => callback(event.payload)).then((fn) => { unlisten = fn; });
-      return () => unlisten();
-    },
-    startWindowDrag: () => {
-      if (tauri.window && tauri.window.getCurrentWindow) {
-        tauri.window.getCurrentWindow().startDragging().catch(() => {});
-      }
-    },
+    startWindowDrag: () => tauri.window.getCurrentWindow().startDragging(),
     onFileDrop: (callback) => { fileDropCallback = callback; },
-    onTranscriptionStatus: (callback) => {
-      let unlisten = () => {};
-      listen('transcription-status', (event) => callback(event.payload)).then((fn) => { unlisten = fn; });
-      return () => unlisten();
-    },
-    onTranscriptionProgress: (callback) => {
-      let unlisten = () => {};
-      listen('transcription-progress', (event) => callback(event.payload)).then((fn) => { unlisten = fn; });
-      return () => unlisten();
-    }
+    onModelDownloadProgress: (callback) => subscribe('model-download-progress', callback),
+    onTranscriptionStatus: (callback) => subscribe('transcription-status', callback),
+    onTranscriptionProgress: (callback) => subscribe('transcription-progress', callback)
+  };
+
+  window.pantoConvert = {
+    selectFiles: (converter) => invoke('select_convert_files', { converter }),
+    inspectFiles: (paths) => invoke('inspect_convert_files', { paths }),
+    selectSubtitle: () => invoke('select_convert_subtitle'),
+    inspectSubtitle: (path) => invoke('inspect_convert_subtitle', { path }),
+    chooseFolder: () => invoke('choose_convert_folder'),
+    convertMedia: (request) => invoke('convert_media', { request }),
+    cancel: () => invoke('cancel_conversion'),
+    showInFolder: (filePath) => invoke('show_in_folder', { filePath }),
+    onProgress: (callback) => subscribe('convert-progress', callback),
+    onStatus: (callback) => subscribe('convert-status', callback)
+  };
+
+  window.pantoUpscale = {
+    selectVideo: () => invoke('select_upscale_video'),
+    inspectVideo: (path) => invoke('inspect_upscale_video', { path }),
+    chooseFolder: () => invoke('choose_upscale_folder'),
+    computePlan: (args) => invoke('compute_upscale_plan', args),
+    start: (request) => invoke('start_upscale', { request }),
+    cancel: () => invoke('cancel_upscale'),
+    status: () => invoke('ffmpeg_status'),
+    showInFolder: (filePath) => invoke('show_in_folder', { filePath }),
+    onProgress: (callback) => subscribe('upscale-progress', callback)
   };
 })();

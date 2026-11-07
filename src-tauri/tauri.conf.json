@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Panto SRT",
+  "productName": "Panto Studio",
   "version": "0.1.0",
-  "identifier": "com.panto.srt",
+  "identifier": "com.panto.studio",
   "build": {
     "frontendDist": "../src/renderer"
   },
@@ -10,11 +10,15 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Panto SRT",
+        "title": "Panto Studio",
         "width": 560,
         "height": 685,
-        "minWidth": 500,
-        "minHeight": 260,
+        "minWidth": 560,
+        "minHeight": 685,
+        "maxWidth": 560,
+        "maxHeight": 685,
+        "resizable": false,
+        "maximizable": false,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "backgroundColor": "#1d1d1f"

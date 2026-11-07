@@ -1,7 +1,7 @@
 [package]
-name = "panto-srt"
+name = "panto-studio"
 version = "0.1.0"
-description = "Private, offline subtitles from voice — transcription to SRT / FCPXML for DaVinci Resolve"
+description = "Convert, upscale and subtitle video — private, local media tools for macOS, Windows and Linux"
 edition = "2021"
 
 [build-dependencies]

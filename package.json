@@ -1,11 +1,11 @@
 {
-  "name": "panto-srt",
+  "name": "panto-studio",
   "version": "0.1.0",
   "private": true,
-  "description": "Private, offline subtitles from voice \u2014 transcription to SRT / FCPXML for DaVinci Resolve",
-  "author": "Panto SRT",
+  "description": "Convert, upscale and subtitle video \u2014 private, local media tools",
+  "author": "Panto Studio",
   "license": "MIT",
-  "homepage": "https://panto.app/srt",
+  "homepage": "https://panto.app/studio",
   "scripts": {
     "prepare:whisper": "node scripts/prepare-whisper.js",
     "prepare:nemo": "node scripts/prepare-nemo.js",
