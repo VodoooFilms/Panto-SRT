@@ -389,6 +389,7 @@ button { font: inherit; }
 .file-size strong { font-size: 18px; font-weight: 500; line-height: 1.05; letter-spacing: -.03em; }
 .file-card.has-thumbnail .file-copy strong,
 .file-card.has-thumbnail .file-size { color: #ffffff; text-shadow: 0 1px 5px rgba(0, 0, 0, .7); }
+.file-card.has-thumbnail .file-copy small { color: rgba(255, 255, 255, .85); text-shadow: 0 1px 5px rgba(0, 0, 0, .7); }
 
 .icon-button {
   width: 24px;

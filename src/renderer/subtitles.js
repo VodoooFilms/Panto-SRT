@@ -360,6 +360,17 @@
     showError('');
     $('stDropZone').classList.add('hidden');
     $('stFileCard').classList.remove('hidden');
+    if (file.thumbnail) {
+      $('stFileThumbnail').src = file.thumbnail;
+      $('stFileThumbnail').classList.remove('hidden');
+      $('stFileMark').classList.add('hidden');
+      $('stFileCard').classList.add('has-thumbnail');
+    } else {
+      $('stFileThumbnail').removeAttribute('src');
+      $('stFileThumbnail').classList.add('hidden');
+      $('stFileMark').classList.remove('hidden');
+      $('stFileCard').classList.remove('has-thumbnail');
+    }
     $('stFileName').textContent = file.name;
     const meta = [formatBytes(file.size), file.duration ? formatDuration(file.duration) : ''].filter(Boolean).join(' · ');
     $('stFileMeta').textContent = meta;
@@ -379,6 +390,10 @@
     showError('');
     hideResult();
     $('stFileCard').classList.add('hidden');
+    $('stFileThumbnail').removeAttribute('src');
+    $('stFileThumbnail').classList.add('hidden');
+    $('stFileMark').classList.remove('hidden');
+    $('stFileCard').classList.remove('has-thumbnail');
     $('stDropZone').classList.remove('hidden');
     $('stEditorPanel').classList.add('hidden');
     $('stProgressPanel').classList.add('hidden');
