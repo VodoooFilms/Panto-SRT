@@ -16,6 +16,8 @@ pub struct ModelDef {
     pub url: &'static str,
     /// Download size in bytes (from the publisher).
     pub size: u64,
+    /// SHA-256 of the published file, verified after download.
+    pub sha256: &'static str,
     /// whisper.cpp model id ("turbo" / "small"); empty for Parakeet.
     pub whisper_id: &'static str,
 }
@@ -28,6 +30,7 @@ pub const CATALOG: &[ModelDef] = &[
         file: "ggml-large-v3-turbo.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin?download=true",
         size: 1_624_555_275,
+        sha256: "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
         whisper_id: "turbo",
     },
     ModelDef {
@@ -37,6 +40,7 @@ pub const CATALOG: &[ModelDef] = &[
         file: "ggml-small.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin?download=true",
         size: 487_601_967,
+        sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
         whisper_id: "small",
     },
     ModelDef {
@@ -46,12 +50,19 @@ pub const CATALOG: &[ModelDef] = &[
         file: "parakeet-tdt-0.6b-v3.q8_0.gguf",
         url: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3/resolve/main/parakeet-tdt-0.6b-v3.q8_0.gguf?download=true",
         size: 713_975_456,
+        sha256: "e3880d0aaaaf2c308ea2c35016b2b895c423eb3fda924c1b463d1c19b7f4d32e",
         whisper_id: "",
     },
 ];
 
+/// The Parakeet runtime is currently macOS Apple Silicon only. Hide it on
+/// other platforms so the app never selects an engine it cannot run.
+pub fn available(model: &ModelDef) -> bool {
+    model.id != PARAKEET_ID || cfg!(all(target_os = "macos", target_arch = "aarch64"))
+}
+
 pub fn def(id: &str) -> Option<&'static ModelDef> {
-    CATALOG.iter().find(|m| m.id == id)
+    CATALOG.iter().find(|m| m.id == id && available(m))
 }
 
 pub fn model_path(paths: &EnginePaths, model: &ModelDef) -> PathBuf {
@@ -111,6 +122,7 @@ pub fn list_models(paths: &EnginePaths) -> Vec<ModelInfo> {
     let active = active_model(paths);
     CATALOG
         .iter()
+        .filter(|model| available(model))
         .map(|model| {
             let path = model_path(paths, model);
             let downloaded = path.exists();
@@ -119,7 +131,9 @@ pub fn list_models(paths: &EnginePaths) -> Vec<ModelInfo> {
                 name: model.name.to_string(),
                 engine_label: model.engine_label.to_string(),
                 size: if downloaded {
-                    std::fs::metadata(&path).map(|m| m.len()).unwrap_or(model.size)
+                    std::fs::metadata(&path)
+                        .map(|m| m.len())
+                        .unwrap_or(model.size)
                 } else {
                     model.size
                 },
@@ -141,10 +155,8 @@ pub fn delete_model(paths: &EnginePaths, id: &str) -> Result<(), String> {
     // Also drop any partial download.
     let _ = std::fs::remove_file(path.with_extension("bin.part"));
     if active_model(paths) == id {
-        if let Some(other) = CATALOG.iter().find(|m| m.id != id) {
-            if is_downloaded(paths, other) {
-                set_active_model(paths, other.id)?;
-            }
+        if let Some(other) = CATALOG.iter().find(|m| m.id != id && available(m)) {
+            set_active_model(paths, other.id)?;
         }
     }
     Ok(())

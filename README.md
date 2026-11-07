@@ -62,16 +62,22 @@ DaVinci Resolve.
 
 ## Getting started
 
-Requires the Rust toolchain and the Tauri CLI (`cargo install tauri-cli --version '^2'`).
+Requires the Rust toolchain, the Tauri CLI (`cargo install tauri-cli --version '^2'`),
+and **ffmpeg** on `PATH` (needed to decode MP4/MOV/other containers and to probe
+their duration; plain WAV/MP3/FLAC work without it).
 
 ```bash
-# 1. Build the whisper.cpp engine (first time only — self-contained, ~0.1s if present)
-npm run prepare:whisper
+# 0. Install the small Node helper used by the Windows engine download
+npm install
+
+# 1. Build the local engines (first time only — ~0.1s if already present)
+npm run prepare:whisper   # whisper.cpp
+npm run prepare:nemo      # NeMo/Parakeet (macOS Apple Silicon only; skipped elsewhere)
 
 # 2. Run in development
 npm start
 
-# 3. Build the macOS app bundle
+# 3. Build the app bundle for the current platform
 npm run build
 ```
 
@@ -85,6 +91,8 @@ npm test        # subtitle engine tests (grouping, SRT, FCPXML, whisper JSON)
 Requirements: **macOS 13.4+ (Apple Silicon)** or **Windows 10/11 x64**,
 ~2–6 GB free RAM depending on the model, and internet only the first time
 (the Whisper model downloads on demand into the app's data folder).
+The **Parakeet** engine is currently macOS Apple Silicon only; Windows builds
+ship the Whisper engines.
 
 ---
 
@@ -113,7 +121,7 @@ download with progress (stoppable), or delete to free space.
 |---------------------|----------|-------------|--------------------------------|
 | Whisper Large v3 Turbo | ~1.6 GB | whisper.cpp | Default, best balance          |
 | Whisper Small       | ~466 MB  | whisper.cpp | Low-end machines               |
-| Parakeet TDT 0.6B v3 | ~681 MB | NeMo (Q8)   | Fastest on Apple Silicon, ES/EN |
+| Parakeet TDT 0.6B v3 | ~681 MB | NeMo (Q8)   | Fastest on Apple Silicon, ES/EN (macOS only) |
 
 ---
 
@@ -125,6 +133,8 @@ src-tauri/             Rust backend (Tauri 2)
   src/
     main.rs            window, menu, commands
     whisper.rs         whisper.cpp engine (spawn, parse, progress)
+    parakeet.rs        NeMo/Parakeet engine wrapper
+    models.rs          model catalog + active model settings
     media.rs           audio/video file introspection
     grouping.rs        word timestamps → subtitle clips
     formats.rs         SRT + FCPXML exporters
@@ -137,6 +147,7 @@ src/
     tauri-bridge.js    window.pantoSRT bridge over Tauri IPC
 scripts/
   prepare-whisper.js   build engine + (optional) models
+  prepare-nemo.js      download the Parakeet runtime (macOS ARM)
 ```
 
 ---

@@ -5,7 +5,8 @@
 use crate::grouping::Word;
 use serde::Serialize;
 use serde_json::Value;
-use std::io::{BufRead, BufReader};
+use sha2::{Digest, Sha256};
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -28,8 +29,35 @@ pub fn model_size(model_id: &str) -> Option<u64> {
     }
 }
 
+/// SHA-256 of the published GGML files, used to reject corrupt or tampered
+/// downloads before they are handed to the native engine.
+pub fn model_sha256(model_id: &str) -> Option<&'static str> {
+    match model_id {
+        "small" => Some("1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"),
+        "turbo" => Some("1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69"),
+        _ => None,
+    }
+}
+
+pub fn sha256_file(path: &Path) -> Result<String, String> {
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).map_err(|e| e.to_string())?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
 pub fn model_file(model_id: &str) -> Option<&'static str> {
-    MODELS.iter().find(|(id, _)| *id == model_id).map(|(_, f)| *f)
+    MODELS
+        .iter()
+        .find(|(id, _)| *id == model_id)
+        .map(|(_, f)| *f)
 }
 
 pub struct EnginePaths {
@@ -38,7 +66,11 @@ pub struct EnginePaths {
 }
 
 fn engine_candidates(paths: &EnginePaths) -> Vec<PathBuf> {
-    let exe = if cfg!(windows) { "whisper-cli.exe" } else { "whisper-cli" };
+    let exe = if cfg!(windows) {
+        "whisper-cli.exe"
+    } else {
+        "whisper-cli"
+    };
     let mut candidates = Vec::new();
     if let Some(res) = &paths.resource_dir {
         candidates.push(res.join("whisper").join(exe));
@@ -54,9 +86,7 @@ fn engine_candidates(paths: &EnginePaths) -> Vec<PathBuf> {
 }
 
 pub fn find_engine(paths: &EnginePaths) -> Option<PathBuf> {
-    engine_candidates(paths)
-        .into_iter()
-        .find(|c| c.exists())
+    engine_candidates(paths).into_iter().find(|c| c.exists())
 }
 
 pub fn models_dir(paths: &EnginePaths) -> PathBuf {
@@ -79,10 +109,23 @@ pub fn find_model(paths: &EnginePaths, model_id: &str) -> Option<PathBuf> {
 }
 
 /// Download a model with the system `curl`, reporting percent progress.
+#[allow(dead_code)]
 pub fn download_model(
     paths: &EnginePaths,
     model_id: &str,
     on_progress: &dyn Fn(i32),
+) -> Result<PathBuf, String> {
+    download_model_cancellable(paths, model_id, on_progress, None, None)
+}
+
+/// Cancellable variant used by the transcription flow, so pressing Cancel
+/// during the automatic model download actually stops it.
+pub fn download_model_cancellable(
+    paths: &EnginePaths,
+    model_id: &str,
+    on_progress: &dyn Fn(i32),
+    child_pid: Option<&Arc<Mutex<Option<u32>>>>,
+    cancelled: Option<&AtomicBool>,
 ) -> Result<PathBuf, String> {
     if let Some(existing) = find_model(paths, model_id) {
         return Ok(existing);
@@ -90,29 +133,40 @@ pub fn download_model(
     let file = model_file(model_id).ok_or_else(|| format!("Modelo desconocido: {model_id}"))?;
     let destination = models_dir(paths).join(file);
     let url = format!("{MODEL_HOST}/{file}?download=true");
-    download_url(&url, &destination, model_size(model_id), on_progress)?;
+    download_url_cancellable(
+        &url,
+        &destination,
+        model_size(model_id),
+        model_sha256(model_id),
+        on_progress,
+        child_pid,
+        cancelled,
+    )?;
     Ok(destination)
 }
 
 /// Download any URL to `destination` (via a `.part` file) with the system
 /// `curl`. Progress is measured from the `.part` file size against the
 /// known total (curl emits no usable progress when its output is piped).
+#[allow(dead_code)]
 pub fn download_url(
     url: &str,
     destination: &Path,
     total: Option<u64>,
     on_progress: &dyn Fn(i32),
 ) -> Result<(), String> {
-    download_url_cancellable(url, destination, total, on_progress, None, None)
+    download_url_cancellable(url, destination, total, None, on_progress, None, None)
 }
 
 /// Cancellable variant: registers the curl PID so another command can kill
 /// it; when `cancelled` is set the partial file is removed and the call
-/// returns `Err("cancelled")`.
+/// returns `Err("cancelled")`. When `expected_sha256` is present the file is
+/// verified before being moved into place.
 pub fn download_url_cancellable(
     url: &str,
     destination: &Path,
     total: Option<u64>,
+    expected_sha256: Option<&str>,
     on_progress: &dyn Fn(i32),
     child_pid: Option<&Arc<Mutex<Option<u32>>>>,
     cancelled: Option<&AtomicBool>,
@@ -123,7 +177,7 @@ pub fn download_url_cancellable(
     let mut child = Command::new("curl")
         .args(["-L", "--fail", "-sS", "-o"])
         .arg(&tmp)
-        .arg(&url)
+        .arg(url)
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("curl no disponible: {e}"))?;
@@ -133,7 +187,10 @@ pub fn download_url_cancellable(
 
     let mut last = -1i32;
     let status = loop {
-        if cancelled.map(|flag| flag.load(Ordering::SeqCst)).unwrap_or(false) {
+        if cancelled
+            .map(|flag| flag.load(Ordering::SeqCst))
+            .unwrap_or(false)
+        {
             let _ = child.kill();
         }
         if let Some(total) = total.filter(|t| *t > 0) {
@@ -153,13 +210,36 @@ pub fn download_url_cancellable(
     if let Some(slot) = child_pid {
         *slot.lock().unwrap() = None;
     }
-    if cancelled.map(|flag| flag.load(Ordering::SeqCst)).unwrap_or(false) {
+    if cancelled
+        .map(|flag| flag.load(Ordering::SeqCst))
+        .unwrap_or(false)
+    {
         let _ = std::fs::remove_file(&tmp);
         return Err("cancelled".to_string());
     }
     if !status.success() {
         let _ = std::fs::remove_file(&tmp);
-        return Err(format!("La descarga terminó con código {:?}", status.code()));
+        return Err(format!(
+            "La descarga terminó con código {:?}",
+            status.code()
+        ));
+    }
+    if let (Some(expected), Some(total)) = (
+        expected_sha256.filter(|s| !s.is_empty()),
+        total.filter(|t| *t > 0),
+    ) {
+        let downloaded = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+        if downloaded != total {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!(
+                "La descarga está incompleta ({downloaded} de {total} bytes)."
+            ));
+        }
+        let actual = sha256_file(&tmp)?;
+        if !actual.eq_ignore_ascii_case(expected) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err("La descarga no superó la verificación SHA-256.".to_string());
+        }
     }
     std::fs::rename(&tmp, destination).map_err(|e| e.to_string())?;
     on_progress(100);
@@ -171,7 +251,9 @@ pub fn parse_timestamp(value: &Value) -> f64 {
     if let Some(n) = value.as_f64() {
         return (n * 1000.0).round() / 1000.0;
     }
-    let Some(text) = value.as_str() else { return 0.0 };
+    let Some(text) = value.as_str() else {
+        return 0.0;
+    };
     let normalized = text.replace(',', ".");
     let parts: Vec<&str> = normalized.split(':').collect();
     if parts.len() != 3 {
@@ -249,7 +331,11 @@ pub fn extract_words(result: &Value) -> Vec<Word> {
             words.extend(tokens_to_words(tokens));
             continue;
         }
-        let text = item.get("text").and_then(|t| t.as_str()).unwrap_or("").trim();
+        let text = item
+            .get("text")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .trim();
         if !text.is_empty() {
             words.push(Word {
                 text: text.to_string(),
@@ -301,17 +387,52 @@ pub struct TranscribeResult {
     pub detected_language: String,
 }
 
+/// Audio input for an engine call. When we had to create a temporary WAV, the
+/// file is removed automatically as soon as the value goes out of scope.
+pub struct TempAudio {
+    path: String,
+    owned: Option<PathBuf>,
+}
+
+impl TempAudio {
+    pub fn borrowed(file_path: &str) -> Self {
+        Self {
+            path: file_path.to_string(),
+            owned: None,
+        }
+    }
+
+    pub fn owned(path: PathBuf) -> Self {
+        Self {
+            path: path.to_string_lossy().into_owned(),
+            owned: Some(path),
+        }
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+}
+
+impl Drop for TempAudio {
+    fn drop(&mut self) {
+        if let Some(path) = &self.owned {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 /// Convert non-WAV/MP3/FLAC inputs to 16 kHz mono WAV with ffmpeg when present.
-pub fn ready_audio(file_path: &str) -> String {
+pub fn ready_audio(file_path: &str) -> TempAudio {
     let ext = Path::new(file_path)
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
     if matches!(ext.as_str(), "wav" | "mp3" | "flac") {
-        return file_path.to_string();
+        return TempAudio::borrowed(file_path);
     }
     let Some(ffmpeg) = crate::media::find_binary("ffmpeg") else {
-        return file_path.to_string();
+        return TempAudio::borrowed(file_path);
     };
     let output = std::env::temp_dir().join(format!(
         "panto-srt-{}-{}.wav",
@@ -322,7 +443,18 @@ pub fn ready_audio(file_path: &str) -> String {
         std::process::id()
     ));
     let ok = Command::new(&ffmpeg)
-        .args(["-hide_banner", "-loglevel", "error", "-y", "-i", file_path, "-ac", "1", "-ar", "16000"])
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            file_path,
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+        ])
         .arg(&output)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -330,9 +462,12 @@ pub fn ready_audio(file_path: &str) -> String {
         .map(|s| s.success())
         .unwrap_or(false);
     if ok && output.exists() {
-        output.to_string_lossy().into_owned()
+        TempAudio {
+            path: output.to_string_lossy().into_owned(),
+            owned: Some(output),
+        }
     } else {
-        file_path.to_string()
+        TempAudio::borrowed(file_path)
     }
 }
 
@@ -381,9 +516,12 @@ pub fn transcribe(
     on_progress: &dyn Fn(i32),
 ) -> Result<TranscribeResult, String> {
     let engine = find_engine(paths).ok_or_else(|| "engine-missing".to_string())?;
-    let model = find_model(paths, model_id)
-        .ok_or_else(|| format!("model-missing:{model_id}"))?;
-    let language = if matches!(language, "es" | "en") { language } else { "auto" };
+    let model = find_model(paths, model_id).ok_or_else(|| format!("model-missing:{model_id}"))?;
+    let language = if matches!(language, "es" | "en") {
+        language
+    } else {
+        "auto"
+    };
 
     let audio_file = ready_audio(file_path);
     let output_prefix = std::env::temp_dir().join(format!(
@@ -404,7 +542,7 @@ pub fn transcribe(
             "-m",
             &model.to_string_lossy(),
             "-f",
-            &audio_file,
+            audio_file.path(),
             "-of",
             &output_prefix.to_string_lossy(),
             "-ojf",
@@ -425,8 +563,14 @@ pub fn transcribe(
     let mut handles = Vec::new();
     // Progress is reported on both stdout and stderr depending on the build.
     let pipes: Vec<Option<Box<dyn std::io::Read + Send>>> = vec![
-        child.stdout.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
-        child.stderr.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
     ];
     for pipe in pipes {
         let stderr_text = Arc::clone(&stderr_text);
@@ -529,7 +673,16 @@ pub fn transcribe(
 
 pub fn kill_child(child_pid: &Arc<Mutex<Option<u32>>>) {
     if let Some(pid) = *child_pid.lock().unwrap() {
-        let _ = Command::new("kill").arg(pid.to_string()).status();
+        #[cfg(windows)]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/F", "/T"])
+                .status();
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = Command::new("kill").arg(pid.to_string()).status();
+        }
     }
 }
 
@@ -571,7 +724,10 @@ mod tests {
                 ("hoy.", 4.9, 5.09)
             ]
         );
-        assert_eq!(extract_utterances(&result)[0].text, "Hola bienvenidos al tutorial de hoy.");
+        assert_eq!(
+            extract_utterances(&result)[0].text,
+            "Hola bienvenidos al tutorial de hoy."
+        );
     }
 
     #[test]
@@ -588,12 +744,47 @@ mod tests {
         .expect("download should succeed");
         let values = progress.lock().unwrap().clone();
         let _ = std::fs::remove_file(&destination);
-        assert!(values.len() > 1, "expected several progress updates, got {values:?}");
+        assert!(
+            values.len() > 1,
+            "expected several progress updates, got {values:?}"
+        );
         assert!(
             values.windows(2).all(|pair| pair[1] >= pair[0]),
             "progress must be monotonic: {values:?}"
         );
         assert_eq!(*values.last().unwrap(), 100);
+    }
+
+    #[test]
+    fn sha256_file_matches_known_digest() {
+        let path = std::env::temp_dir().join(format!("panto-sha-{}", std::process::id()));
+        std::fs::write(&path, b"panto").unwrap();
+        let digest = sha256_file(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(
+            digest,
+            "5b16cb2218be5516b8a0c73c8be27da10bf4058564c959501b454bf0726e4def"
+        );
+    }
+
+    #[test]
+    fn download_rejects_sha256_mismatch() {
+        let source = std::env::temp_dir().join(format!("panto-dl-src-{}", std::process::id()));
+        let destination = std::env::temp_dir().join(format!("panto-dl-dst-{}", std::process::id()));
+        std::fs::write(&source, b"panto").unwrap();
+        let result = download_url_cancellable(
+            &format!("file://{}", source.to_string_lossy()),
+            &destination,
+            Some(5),
+            Some("0000000000000000000000000000000000000000000000000000000000000000"),
+            &|_| {},
+            None,
+            None,
+        );
+        let _ = std::fs::remove_file(&source);
+        let _ = std::fs::remove_file(&destination);
+        assert!(result.is_err());
+        assert!(!destination.exists());
     }
 
     #[test]

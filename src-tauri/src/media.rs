@@ -53,8 +53,7 @@ pub fn find_binary(name: &str) -> Option<String> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map(|s| s.success() || true)
-        .unwrap_or(false)
+        .is_ok()
     {
         return Some(name.to_string());
     }

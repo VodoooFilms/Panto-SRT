@@ -4,15 +4,19 @@
   "private": true,
   "description": "Private, offline subtitles from voice \u2014 transcription to SRT / FCPXML for DaVinci Resolve",
   "author": "Panto SRT",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "homepage": "https://panto.app/srt",
   "scripts": {
     "prepare:whisper": "node scripts/prepare-whisper.js",
-    "prestart": "npm run prepare:whisper",
+    "prepare:nemo": "node scripts/prepare-nemo.js",
+    "prestart": "npm run prepare:whisper && npm run prepare:nemo",
     "start": "cargo tauri dev",
     "check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "build": "npm run prepare:whisper && cargo tauri build"
+    "build": "npm run prepare:whisper && npm run prepare:nemo && cargo tauri build"
+  },
+  "devDependencies": {
+    "extract-zip": "^2.0.1"
   },
   "repository": {
     "type": "git",

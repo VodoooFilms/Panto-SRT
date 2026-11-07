@@ -23,6 +23,7 @@ struct AppState {
     child_pid: Arc<Mutex<Option<u32>>>,
     download_cancelled: Arc<AtomicBool>,
     download_pid: Arc<Mutex<Option<u32>>>,
+    download_in_progress: Arc<AtomicBool>,
 }
 
 impl Default for AppState {
@@ -33,8 +34,30 @@ impl Default for AppState {
             child_pid: Arc::new(Mutex::new(None)),
             download_cancelled: Arc::new(AtomicBool::new(false)),
             download_pid: Arc::new(Mutex::new(None)),
+            download_in_progress: Arc::new(AtomicBool::new(false)),
         }
     }
+}
+
+/// Prevents two model downloads from writing to the same `.part` file or
+/// overwriting each other's cancellation PID.
+struct DownloadGuard(Arc<AtomicBool>);
+
+impl Drop for DownloadGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
+fn begin_download(state: &AppState) -> Result<DownloadGuard, String> {
+    if state.download_in_progress.swap(true, Ordering::SeqCst) {
+        return Err(text(
+            state,
+            "Ya hay una descarga de modelo en curso.",
+            "A model download is already in progress.",
+        ));
+    }
+    Ok(DownloadGuard(Arc::clone(&state.download_in_progress)))
 }
 
 fn lang(state: &AppState) -> String {
@@ -62,8 +85,6 @@ fn engine_paths(app: &AppHandle) -> whisper::EnginePaths {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TranscribeOptions {
-    #[allow(dead_code)]
-    model: Option<String>,
     language: Option<String>,
     media_duration: Option<f64>,
 }
@@ -102,7 +123,10 @@ fn set_language(app: AppHandle, state: State<'_, AppState>, language: String) ->
 }
 
 #[tauri::command]
-async fn select_media(app: AppHandle, state: State<'_, AppState>) -> Result<Option<media::FileDetails>, String> {
+async fn select_media(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<media::FileDetails>, String> {
     let extensions: Vec<&str> = media::AUDIO_EXTENSIONS
         .iter()
         .chain(media::VIDEO_EXTENSIONS.iter())
@@ -136,9 +160,16 @@ async fn select_media(app: AppHandle, state: State<'_, AppState>) -> Result<Opti
 }
 
 #[tauri::command]
-fn inspect_media(state: State<'_, AppState>, file_path: String) -> Result<media::FileDetails, String> {
+fn inspect_media(
+    state: State<'_, AppState>,
+    file_path: String,
+) -> Result<media::FileDetails, String> {
     if !media::is_supported(&file_path) || !Path::new(&file_path).exists() {
-        return Err(text(&state, "El archivo no tiene un formato compatible.", "The file format is not supported."));
+        return Err(text(
+            &state,
+            "El archivo no tiene un formato compatible.",
+            "The file format is not supported.",
+        ));
     }
     media::file_details(&file_path)
 }
@@ -169,10 +200,12 @@ async fn download_model(
     model_id: String,
 ) -> Result<Vec<models::ModelInfo>, String> {
     let paths = engine_paths(&app);
-    let model = models::def(&model_id)
-        .ok_or_else(|| format!("Modelo desconocido: {model_id}"))?;
+    let model = models::def(&model_id).ok_or_else(|| format!("Modelo desconocido: {model_id}"))?;
+    let _guard = begin_download(&state)?;
     let destination = whisper::models_dir(&paths).join(model.file);
     let url = model.url.to_string();
+    let expected_sha256 = model.sha256;
+    let total = model.size;
     let app_progress = app.clone();
     let progress_id = model_id.clone();
     state.download_cancelled.store(false, Ordering::SeqCst);
@@ -182,7 +215,8 @@ async fn download_model(
         whisper::download_url_cancellable(
             &url,
             &destination,
-            Some(model.size),
+            Some(total),
+            Some(expected_sha256),
             &|percent| {
                 let _ = app_progress.emit(
                     "model-download-progress",
@@ -214,10 +248,13 @@ async fn transcribe_media(
     options: Option<TranscribeOptions>,
 ) -> Result<whisper::TranscribeResult, String> {
     if !media::is_supported(&file_path) || !Path::new(&file_path).exists() {
-        return Err(text(&state, "El archivo no tiene un formato compatible.", "The file format is not supported."));
+        return Err(text(
+            &state,
+            "El archivo no tiene un formato compatible.",
+            "The file format is not supported.",
+        ));
     }
     let options = options.unwrap_or(TranscribeOptions {
-        model: None,
         language: None,
         media_duration: None,
     });
@@ -232,7 +269,9 @@ async fn transcribe_media(
         active_def.whisper_id.to_string()
     };
 
+    state.cancelled.store(false, Ordering::SeqCst);
     if !models::is_downloaded(&paths, active_def) {
+        let _guard = begin_download(&state)?;
         let _ = app.emit(
             "transcription-status",
             json!({ "status": "model-download", "model": active }),
@@ -245,11 +284,30 @@ async fn transcribe_media(
                 json!({ "phase": "model", "model": progress_model, "percent": percent }),
             );
         };
+        let download_cancelled = Arc::clone(&state.cancelled);
+        let download_pid = Arc::clone(&state.child_pid);
         if is_parakeet {
             let destination = whisper::models_dir(&paths).join(active_def.file);
-            whisper::download_url(active_def.url, &destination, Some(active_def.size), &emit_progress)?;
+            whisper::download_url_cancellable(
+                active_def.url,
+                &destination,
+                Some(active_def.size),
+                Some(active_def.sha256),
+                &emit_progress,
+                Some(&download_pid),
+                Some(download_cancelled.as_ref()),
+            )?;
         } else {
-            whisper::download_model(&paths, &model_id, &emit_progress)?;
+            whisper::download_model_cancellable(
+                &paths,
+                &model_id,
+                &emit_progress,
+                Some(&download_pid),
+                Some(download_cancelled.as_ref()),
+            )?;
+        }
+        if state.cancelled.load(Ordering::SeqCst) {
+            return Err("cancelled".to_string());
         }
         let _ = app.emit(
             "transcription-status",
@@ -257,7 +315,6 @@ async fn transcribe_media(
         );
     }
 
-    state.cancelled.store(false, Ordering::SeqCst);
     let cancelled = Arc::clone(&state.cancelled);
     let child_pid = Arc::clone(&state.child_pid);
     let language = options.language.unwrap_or_else(|| "auto".to_string());
@@ -327,9 +384,6 @@ async fn transcribe_media(
 
 #[tauri::command]
 fn cancel_transcription(app: AppHandle, state: State<'_, AppState>) -> bool {
-    if state.child_pid.lock().unwrap().is_none() && !state.cancelled.load(Ordering::SeqCst) {
-        // Still allow cancelling during model download phase reporting.
-    }
     state.cancelled.store(true, Ordering::SeqCst);
     whisper::kill_child(&state.child_pid);
     let _ = app.emit("transcription-status", json!({ "status": "cancelling" }));
@@ -372,9 +426,13 @@ fn export_subtitles(
     options: Option<ExportOptions>,
 ) -> Result<serde_json::Value, String> {
     if !media::is_supported(&source_path) || !Path::new(&source_path).exists() {
-        return Err(text(&state, "El archivo no tiene un formato compatible.", "The file format is not supported."));
+        return Err(text(
+            &state,
+            "El archivo no tiene un formato compatible.",
+            "The file format is not supported.",
+        ));
     }
-    if clips.is_empty() || clips.iter().any(|c| c.text.is_empty()) {
+    if clips.iter().all(|c| c.text.trim().is_empty()) {
         return Err("No hay clips para exportar.".to_string());
     }
     let options = options.unwrap_or(ExportOptions {
@@ -386,21 +444,29 @@ fn export_subtitles(
 
     let output_path = match format.as_str() {
         "fcpxml" => {
-            let suffix = if lang(&state) == "es" { "-subtítulos" } else { "-subtitles" };
+            let suffix = if lang(&state) == "es" {
+                "-subtítulos"
+            } else {
+                "-subtitles"
+            };
             let path = unique_output_path(&source_path, suffix, ".xml");
-            std::fs::write(&path, formats::build_fcpxml(&clips, fps, offset, &source_path))
-                .map_err(|e| e.to_string())?;
+            std::fs::write(
+                &path,
+                formats::build_fcpxml(&clips, fps, offset, &source_path),
+            )
+            .map_err(|e| e.to_string())?;
             path
         }
         "srt" => {
             let path = unique_output_path(&source_path, "", ".srt");
-            std::fs::write(&path, formats::build_srt(&clips, offset))
-                .map_err(|e| e.to_string())?;
+            std::fs::write(&path, formats::build_srt(&clips, offset)).map_err(|e| e.to_string())?;
             path
         }
         other => return Err(format!("Formato desconocido: {other}")),
     };
-    let bytes = std::fs::metadata(&output_path).map(|m| m.len()).unwrap_or(0);
+    let bytes = std::fs::metadata(&output_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
     Ok(json!({ "outputPath": output_path.to_string_lossy(), "bytes": bytes }))
 }
 
@@ -443,11 +509,28 @@ fn build_menu(app: &AppHandle, language: &str) -> tauri::Result<tauri::menu::Men
         &[
             &about,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::hide(app, Some(if es { "Ocultar Panto SRT" } else { "Hide Panto SRT" }))?,
-            &PredefinedMenuItem::hide_others(app, Some(if es { "Ocultar otras" } else { "Hide Others" }))?,
+            &PredefinedMenuItem::hide(
+                app,
+                Some(if es {
+                    "Ocultar Panto SRT"
+                } else {
+                    "Hide Panto SRT"
+                }),
+            )?,
+            &PredefinedMenuItem::hide_others(
+                app,
+                Some(if es { "Ocultar otras" } else { "Hide Others" }),
+            )?,
             &PredefinedMenuItem::show_all(app, Some(if es { "Mostrar todo" } else { "Show All" }))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, Some(if es { "Salir de Panto SRT" } else { "Quit Panto SRT" }))?,
+            &PredefinedMenuItem::quit(
+                app,
+                Some(if es {
+                    "Salir de Panto SRT"
+                } else {
+                    "Quit Panto SRT"
+                }),
+            )?,
         ],
     )?;
     let edit_menu = Submenu::with_items(
@@ -461,7 +544,10 @@ fn build_menu(app: &AppHandle, language: &str) -> tauri::Result<tauri::menu::Men
             &PredefinedMenuItem::cut(app, Some(if es { "Cortar" } else { "Cut" }))?,
             &PredefinedMenuItem::copy(app, Some(if es { "Copiar" } else { "Copy" }))?,
             &PredefinedMenuItem::paste(app, Some(if es { "Pegar" } else { "Paste" }))?,
-            &PredefinedMenuItem::select_all(app, Some(if es { "Seleccionar todo" } else { "Select All" }))?,
+            &PredefinedMenuItem::select_all(
+                app,
+                Some(if es { "Seleccionar todo" } else { "Select All" }),
+            )?,
         ],
     )?;
     let window_menu = Submenu::with_items(
@@ -472,7 +558,17 @@ fn build_menu(app: &AppHandle, language: &str) -> tauri::Result<tauri::menu::Men
             &PredefinedMenuItem::minimize(app, Some(if es { "Minimizar" } else { "Minimize" }))?,
             &PredefinedMenuItem::maximize(app, Some("Zoom"))?,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "front", if es { "Traer todo al frente" } else { "Bring All to Front" }, true, None::<&str>)?,
+            &MenuItem::with_id(
+                app,
+                "front",
+                if es {
+                    "Traer todo al frente"
+                } else {
+                    "Bring All to Front"
+                },
+                true,
+                None::<&str>,
+            )?,
         ],
     )?;
     Menu::with_items(app, &[&app_menu, &edit_menu, &window_menu])

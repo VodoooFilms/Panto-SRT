@@ -86,7 +86,7 @@ pub fn build_fcpxml(clips: &[Clip], fps: u32, timecode_base: f64, source_path: &
         .filter(|c| !c.text.trim().is_empty())
         .map(|clip| {
             let duration = (clip.end - clip.start).max(0.1);
-            (clip.start, duration, clip.text.trim().replace('\n', "<br/>"))
+            (clip.start, duration, clip.text.trim().to_string())
         })
         .collect();
 
@@ -128,6 +128,8 @@ pub fn build_fcpxml(clips: &[Clip], fps: u32, timecode_base: f64, source_path: &
         out.push_str(&format!(
             "                <text-style ref=\"sts-{index}\">{}</text-style>\n",
             escape_xml(text)
+                .replace("\r\n", "\n")
+                .replace('\n', "<br/>")
         ));
         out.push_str("              </text>\n");
         out.push_str("            </title>\n");
@@ -146,7 +148,12 @@ mod tests {
     use super::*;
 
     fn clip(start: f64, end: f64, text: &str) -> Clip {
-        Clip { index: 0, start, end, text: text.into() }
+        Clip {
+            index: 0,
+            start,
+            end,
+            text: text.into(),
+        }
     }
 
     #[test]
@@ -159,7 +166,10 @@ mod tests {
     #[test]
     fn srt_numbered_with_offset() {
         let srt = build_srt(&[clip(0.0, 1.25, "Hola"), clip(2.0, 3.5, "Mundo")], 3600.0);
-        assert_eq!(srt, "1\n01:00:00,000 --> 01:00:01,250\nHola\n\n2\n01:00:02,000 --> 01:00:03,500\nMundo\n");
+        assert_eq!(
+            srt,
+            "1\n01:00:00,000 --> 01:00:01,250\nHola\n\n2\n01:00:02,000 --> 01:00:03,500\nMundo\n"
+        );
     }
 
     #[test]
@@ -170,8 +180,15 @@ mod tests {
 
     #[test]
     fn fcpxml_spine_and_tcstart() {
-        let xml = build_fcpxml(&[clip(0.0, 1.2, "Hola <mundo> & amigos")], 25, 3600.0, "/tmp/demo.mp4");
-        assert!(xml.contains("<title name=\"Subtítulo 1\" lane=\"1\" offset=\"0/25s\" duration=\"30/25s\">"));
+        let xml = build_fcpxml(
+            &[clip(0.0, 1.2, "Hola <mundo> & amigos")],
+            25,
+            3600.0,
+            "/tmp/demo.mp4",
+        );
+        assert!(xml.contains(
+            "<title name=\"Subtítulo 1\" lane=\"1\" offset=\"0/25s\" duration=\"30/25s\">"
+        ));
         assert!(xml.contains("tcStart=\"90000/25s\""));
         assert!(xml.contains("Hola &lt;mundo&gt; &amp; amigos"));
         assert!(xml.contains("<project name=\"Panto SRT · demo\">"));

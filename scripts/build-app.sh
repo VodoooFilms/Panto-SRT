@@ -11,15 +11,22 @@ cargo build --release --offline --manifest-path "$ROOT/src-tauri/Cargo.toml"
 pkill -x panto-srt 2>/dev/null || true
 sleep 1
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/whisper"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/whisper/lib"
 cp "$ROOT/src-tauri/target/release/panto-srt" "$APP/Contents/MacOS/panto-srt"
 cp "$ROOT/assets/icons/panto-srt.icns" "$APP/Contents/Resources/icon.icns"
 cp "$ROOT/build/whisper/whisper-cli" "$APP/Contents/Resources/whisper/whisper-cli"
-cp -R "$ROOT/build/nemo" "$APP/Contents/Resources/nemo"
+if [ -d "$ROOT/build/whisper/lib" ]; then
+  cp -R "$ROOT/build/whisper/lib/." "$APP/Contents/Resources/whisper/lib/"
+fi
+if [ -d "$ROOT/build/nemo" ]; then
+  cp -R "$ROOT/build/nemo" "$APP/Contents/Resources/nemo"
+fi
 cp "$ROOT/THIRD_PARTY_NOTICES.md" "$APP/Contents/Resources/"
 chmod +x "$APP/Contents/MacOS/panto-srt" \
-  "$APP/Contents/Resources/whisper/whisper-cli" \
-  "$APP/Contents/Resources/nemo/bin/nemo-speech"
+  "$APP/Contents/Resources/whisper/whisper-cli"
+if [ -x "$APP/Contents/Resources/nemo/bin/nemo-speech" ]; then
+  chmod +x "$APP/Contents/Resources/nemo/bin/nemo-speech"
+fi
 
 cat > "$APP/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>

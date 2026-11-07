@@ -73,7 +73,7 @@ const TEXT = {
   }
 };
 
-const SUBTITLE_DEFAULTS = { maxChars: 42, maxDuration: 3.5, minGap: 0.2, model: 'turbo', lang: 'auto', fps: 25 };
+const SUBTITLE_DEFAULTS = { maxChars: 42, maxDuration: 3.5, minGap: 0.2, lang: 'auto', fps: 25 };
 
 const state = {
   appLang: 'es',
@@ -380,8 +380,12 @@ function setBusy(busy) {
 }
 
 async function pickFromDialog() {
-  const file = await window.pantoSRT.selectMedia();
-  if (file) setFile(file);
+  try {
+    const file = await window.pantoSRT.selectMedia();
+    if (file) setFile(file);
+  } catch (error) {
+    showError((error && error.message) || 'Error');
+  }
 }
 
 function setFile(file) {
@@ -440,7 +444,6 @@ async function generate() {
 
   try {
     const result = await window.pantoSRT.transcribeMedia(state.file.path, {
-      model: SUBTITLE_DEFAULTS.model,
       language: SUBTITLE_DEFAULTS.lang,
       mediaDuration: state.file.duration
     });
@@ -518,6 +521,12 @@ function wireEvents() {
   });
 
   $('dropZone').addEventListener('click', pickFromDialog);
+  $('dropZone').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      pickFromDialog();
+    }
+  });
   $('removeButton').addEventListener('click', reset);
   $('generateButton').addEventListener('click', generate);
   $('cancelButton').addEventListener('click', () => window.pantoSRT.cancelTranscription());

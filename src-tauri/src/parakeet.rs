@@ -3,7 +3,7 @@
 //! which map directly onto our `Word` stream.
 
 use crate::grouping::Word;
-use crate::whisper::{EnginePaths, TranscribeResult, Utterance};
+use crate::whisper::{EnginePaths, TempAudio, TranscribeResult, Utterance};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -11,7 +11,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub fn find_engine(paths: &EnginePaths) -> Option<PathBuf> {
-    let exe = if cfg!(windows) { "nemo-speech.exe" } else { "nemo-speech" };
+    let exe = if cfg!(windows) {
+        "nemo-speech.exe"
+    } else {
+        "nemo-speech"
+    };
     let mut candidates = Vec::new();
     if let Some(res) = &paths.resource_dir {
         candidates.push(res.join("nemo").join("bin").join(exe));
@@ -26,12 +30,12 @@ pub fn find_engine(paths: &EnginePaths) -> Option<PathBuf> {
 }
 
 /// nemo-speech only ingests WAV, so always normalize to 16 kHz mono WAV.
-fn ready_wav(file_path: &str) -> String {
+fn ready_wav(file_path: &str) -> TempAudio {
     if file_path.to_lowercase().ends_with(".wav") {
-        return file_path.to_string();
+        return TempAudio::borrowed(file_path);
     }
     let Some(ffmpeg) = crate::media::find_binary("ffmpeg") else {
-        return file_path.to_string();
+        return TempAudio::borrowed(file_path);
     };
     let output = std::env::temp_dir().join(format!(
         "panto-srt-pk-{}-{}.wav",
@@ -42,7 +46,18 @@ fn ready_wav(file_path: &str) -> String {
         std::process::id()
     ));
     let ok = Command::new(&ffmpeg)
-        .args(["-hide_banner", "-loglevel", "error", "-y", "-i", file_path, "-ac", "1", "-ar", "16000"])
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            file_path,
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+        ])
         .arg(&output)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -50,9 +65,9 @@ fn ready_wav(file_path: &str) -> String {
         .map(|s| s.success())
         .unwrap_or(false);
     if ok && output.exists() {
-        output.to_string_lossy().into_owned()
+        TempAudio::owned(output)
     } else {
-        file_path.to_string()
+        TempAudio::borrowed(file_path)
     }
 }
 
@@ -83,7 +98,7 @@ pub fn transcribe(
     on_progress(5);
     let mut child = Command::new(&engine)
         .arg("transcribe")
-        .arg(&audio)
+        .arg(audio.path())
         .args(["--model"])
         .arg(model_path)
         .args(["--format", "json", "-o"])
@@ -157,7 +172,11 @@ pub fn transcribe(
         utterances: if text.is_empty() {
             Vec::new()
         } else {
-            vec![Utterance { start: 0.0, end: duration, text }]
+            vec![Utterance {
+                start: 0.0,
+                end: duration,
+                text,
+            }]
         },
         words,
         duration,

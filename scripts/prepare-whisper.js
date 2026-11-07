@@ -20,6 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const https = require('https');
+const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
@@ -30,6 +31,10 @@ const MODELS = {
   small: 'ggml-small.bin',
   medium: 'ggml-medium.bin',
   turbo: 'ggml-large-v3-turbo.bin'
+};
+const MODEL_SHA256 = {
+  small: '1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b',
+  turbo: '1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69'
 };
 
 const log = (message, ...rest) => process.stdout.write(`  ${message}\n`.padStart(1, ' '), ...rest);
@@ -76,6 +81,30 @@ function downloadFile(url, destination, redirects = 0) {
   });
 }
 
+function sha256File(file) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(file);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('error', reject);
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+async function verifyFile(file, digest, label) {
+  if (!digest) {
+    log(`⚠ ${label}: sin SHA-256 publicado, no se pudo verificar la integridad.`);
+    return;
+  }
+  const [algorithm, expected] = String(digest).split(':');
+  if (algorithm !== 'sha256' || !expected) return;
+  const actual = await sha256File(file);
+  if (actual.toLowerCase() !== expected.toLowerCase()) {
+    fs.rmSync(file, { force: true });
+    throw new Error(`${label}: SHA-256 no coincide (esperado ${expected}, obtenido ${actual}).`);
+  }
+}
+
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: 'inherit', ...options });
@@ -105,6 +134,7 @@ async function prepareWindows() {
   const zipPath = path.join(WHISPER_DIR, 'whisper-bin-Win32.zip');
   log(`Descargando ${asset.name} (${(asset.size / 1024 / 1024).toFixed(1)} MB)…`);
   await downloadFile(asset.browser_download_url, zipPath);
+  await verifyFile(zipPath, asset.digest, asset.name);
   log('Extrayendo whisper-cli.exe…');
   const extractPath = path.join(WHISPER_DIR, 'win32-tmp');
   fs.mkdirSync(extractPath, { recursive: true });
@@ -285,6 +315,8 @@ async function prepareModel(modelId) {
   }
   log(`Descargando modelo ${modelId} (${filename})…`);
   await downloadFile(`${MODEL_HOST}/${filename}`, destination);
+  const digest = MODEL_SHA256[modelId] ? `sha256:${MODEL_SHA256[modelId]}` : null;
+  await verifyFile(destination, digest, filename);
   log(`✓ Modelo listo: ${filename}`);
 }
 
@@ -292,6 +324,9 @@ async function main() {
   const modelArg = process.argv.slice(2).find((arg) => arg.startsWith('--model='));
   const modelId = modelArg ? modelArg.slice('--model='.length) : null;
   fs.mkdirSync(WHISPER_DIR, { recursive: true });
+  // Keep the resource directory present even for static builds, so the
+  // Tauri bundle configuration always finds it.
+  fs.mkdirSync(path.join(WHISPER_DIR, 'lib'), { recursive: true });
   try {
     if (await engineReady()) {
       log(`✓ Motor ya presente: ${path.basename(path.join(WHISPER_DIR, process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli'))}`);

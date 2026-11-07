@@ -62,16 +62,22 @@ subtítulos limpios, listos para DaVinci Resolve.
 
 ## Empezar
 
-Requiere el toolchain de Rust y el CLI de Tauri (`cargo install tauri-cli --version '^2'`).
+Requiere el toolchain de Rust, el CLI de Tauri (`cargo install tauri-cli --version '^2'`)
+y **ffmpeg** en el `PATH` (necesario para decodificar MP4/MOV y otros
+contenedores y para leer su duración; WAV/MP3/FLAC funcionan sin él).
 
 ```bash
-# 1. Compila el motor whisper.cpp (solo la primera vez — autocontenido, ~0,1 s si ya existe)
-npm run prepare:whisper
+# 0. Instala el pequeño helper de Node que usa la descarga del motor en Windows
+npm install
+
+# 1. Compila los motores locales (solo la primera vez — ~0,1 s si ya existen)
+npm run prepare:whisper   # whisper.cpp
+npm run prepare:nemo      # NeMo/Parakeet (solo macOS Apple Silicon; se omite en otros sistemas)
 
 # 2. Ejecuta en modo desarrollo
 npm start
 
-# 3. Construye la app de macOS
+# 3. Construye la app para la plataforma actual
 npm run build
 ```
 
@@ -85,6 +91,8 @@ npm test        # tests del motor de subtítulos (grouping, SRT, FCPXML, JSON de
 Requisitos: **macOS 13.4+ (Apple Silicon)** o **Windows 10/11 x64**,
 ~2–6 GB de RAM libre según el modelo, e internet solo la primera vez
 (el modelo Whisper se descarga bajo demanda a la carpeta de datos de la app).
+El motor **Parakeet** actualmente es solo para macOS Apple Silicon; las
+versiones de Windows incluyen los motores Whisper.
 
 ---
 
@@ -115,7 +123,7 @@ cambiar, descargar con progreso (detenible) o borrar para liberar espacio.
 |------------------------|----------|-------------|----------------------------------|
 | Whisper Large v3 Turbo | ~1,6 GB  | whisper.cpp | Por defecto, mejor equilibrio    |
 | Whisper Small          | ~466 MB  | whisper.cpp | Equipos modestos                 |
-| Parakeet TDT 0.6B v3   | ~681 MB  | NeMo (Q8)   | El más rápido en Apple Silicon   |
+| Parakeet TDT 0.6B v3   | ~681 MB  | NeMo (Q8)   | El más rápido en Apple Silicon (solo macOS) |
 
 ---
 
@@ -127,6 +135,8 @@ src-tauri/             backend Rust (Tauri 2)
   src/
     main.rs            ventana, menú, comandos
     whisper.rs         motor whisper.cpp (spawn, parseo, progreso)
+    parakeet.rs        motor NeMo/Parakeet
+    models.rs          catálogo de modelos + modelo activo
     media.rs           inspección de archivos de audio/video
     grouping.rs        timestamps por palabra → clips de subtítulos
     formats.rs         exportadores SRT + FCPXML
@@ -139,6 +149,7 @@ src/
     tauri-bridge.js    puente window.pantoSRT sobre IPC de Tauri
 scripts/
   prepare-whisper.js   compila motor + (opcional) modelos
+  prepare-nemo.js      descarga el runtime Parakeet (macOS ARM)
 ```
 
 ---
