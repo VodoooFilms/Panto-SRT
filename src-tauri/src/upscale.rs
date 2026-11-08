@@ -23,7 +23,7 @@ pub struct UpscaleRequest {
     pub target_id: String,
     pub mode: String,
     pub output_directory: Option<String>,
-    /// "lanczos" (default) or a RelayVSR model id ("relay-x2" / "relay-x4").
+    /// "lanczos" (default) or a Real-ESRGAN model id ("esr-x2" / "esr-x4").
     pub engine: Option<String>,
 }
 

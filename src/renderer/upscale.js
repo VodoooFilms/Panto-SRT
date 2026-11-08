@@ -49,7 +49,6 @@
       modelsFoot: 'Los motores de IA ya vienen con la app (1,2 MB). Real-ESRGAN está hecho para animación y video; Lanczos es instantáneo pero solo redimensiona.',
       modelActive: 'Activo',
       modelReady: 'Listo',
-      modelMissing: 'Sin descargar',
       useModel: 'Usar este modelo',
       close: 'Cerrar',
       aiDetail: 'IA · modelos incluidos en la app',
@@ -58,7 +57,7 @@
       etaRemaining: 'restante',
       scalingAiDetail: 'Real-ESRGAN · muy rápido · audio conservado',
       modelMissingErr: 'El motor de IA no está disponible.',
-      sdMissing: 'No se encontró el motor de IA (sd-cli) en la app.',
+      sdMissing: 'No se encontró el motor de IA en la app.',
       sdFailed: 'El motor de IA falló.'
     },
     en: {
@@ -107,7 +106,6 @@
       modelsFoot: 'AI engines ship inside the app (1.2 MB). Real-ESRGAN is made for animation and video; Lanczos is instant but only resizes.',
       modelActive: 'Active',
       modelReady: 'Ready',
-      modelMissing: 'Not downloaded',
       useModel: 'Use this model',
       close: 'Close',
       aiDetail: 'AI · models built into the app',
@@ -116,7 +114,7 @@
       etaRemaining: 'remaining',
       scalingAiDetail: 'Real-ESRGAN · very fast · audio preserved',
       modelMissingErr: 'The AI engine is not available.',
-      sdMissing: 'The AI engine (sd-cli) was not found in the app.',
+      sdMissing: 'The AI engine was not found in the app.',
       sdFailed: 'The AI engine failed.'
     }
   };
@@ -182,21 +180,21 @@
 
   // Measured on M4: ~0.3 s/frame (x2) and ~0.8 s/frame (x4) on 832x480;
   // GPU-bound, so it grows near-linearly with pixel count.
-  function relaySecondsPerFrame(width, height, factor) {
+  function aiSecondsPerFrame(width, height, factor) {
     const pixels = Math.max(1, (width * height) / (832 * 480));
     const base = factor >= 4 ? 0.8 : 0.35;
     return base * Math.max(0.5, Math.min(pixels, 20));
   }
 
-  function relayEtaSeconds() {
+  function aiEtaSeconds() {
     if (!state.file) return 0;
     const fps = state.file.fps > 0 ? state.file.fps : 30;
     const frames = Math.max(1, Math.round(state.file.duration * fps));
     const factor = state.engine === 'esr-x4' ? 4 : 2;
-    return frames * relaySecondsPerFrame(state.file.width, state.file.height, factor);
+    return frames * aiSecondsPerFrame(state.file.width, state.file.height, factor);
   }
 
-  function isRelay() {
+  function isAi() {
     return state.engine !== 'lanczos';
   }
 
@@ -205,7 +203,7 @@
   }
 
   function engineReady() {
-    if (!isRelay()) return true;
+    if (!isAi()) return true;
     const model = activeModelInfo();
     return Boolean(model && model.downloaded);
   }
@@ -269,7 +267,7 @@
   function setStatusIdle() {
     statusPanel.className = 'status idle';
     statusIcon.textContent = '';
-    if (isRelay()) {
+    if (isAi()) {
       const model = activeModelInfo();
       statusTitle.textContent = model ? model.name : 'Real-ESRGAN';
       statusDetail.textContent = t('aiDetail');
@@ -293,8 +291,8 @@
   function setStatusProcessing(percent) {
     statusPanel.className = 'status processing';
     statusIcon.textContent = '';
-    statusTitle.textContent = isRelay() ? t('scalingAi') : t('scaling');
-    statusDetail.textContent = isRelay()
+    statusTitle.textContent = isAi() ? t('scalingAi') : t('scaling');
+    statusDetail.textContent = isAi()
       ? t('scalingAiDetail')
       : state.plan ? `${state.plan.label} · ${t('scalingDetail')}` : t('scalingDetail');
     statusRight.textContent = `${Math.round(percent)}%`;
@@ -381,7 +379,7 @@
       $('upOutputName').textContent = `${fileStem(state.file.name)}_${plan.label.toLowerCase()}.mp4`;
       $('upOutputDimensions').textContent = `${plan.targetWidth} × ${plan.targetHeight}`;
       $('upOutputSize').textContent = plan.estimatedBytes ? `≈ ${formatBytes(plan.estimatedBytes)}` : '—';
-      $('upOutputDetail').textContent = `${isRelay() ? 'Real-ESRGAN IA' : 'Lanczos'} · ${planBars(plan)}`;
+      $('upOutputDetail').textContent = `${isAi() ? 'Real-ESRGAN IA' : 'Lanczos'} · ${planBars(plan)}`;
       return;
     }
 
@@ -395,7 +393,7 @@
     $('upOutputName').textContent = '—';
     $('upOutputDimensions').textContent = '—';
     $('upOutputSize').textContent = '—';
-    $('upOutputDetail').textContent = `${isRelay() ? 'Real-ESRGAN IA' : 'Lanczos'} · ${t('quality')}`;
+    $('upOutputDetail').textContent = `${isAi() ? 'Real-ESRGAN IA' : 'Lanczos'} · ${t('quality')}`;
   }
 
   function renderActions() {
@@ -561,8 +559,8 @@
   async function convert() {
     if (!state.file || state.converting || state.loading) return;
 
-    if (isRelay()) {
-      const eta = relayEtaSeconds();
+    if (isAi()) {
+      const eta = aiEtaSeconds();
       if (eta > 600 && !window.confirm(t('etaConfirm')(formatEta(eta)))) return;
     }
 
@@ -669,13 +667,13 @@
 
   const ENGINE_ICONS = {
     lanczos: '<svg viewBox="0 0 20 20"><path d="M3 10h2l2-5 3 10 3-8 2 3h2"/></svg>',
-    relay: '<svg viewBox="0 0 20 20"><path d="M10 2l1.8 5.2L17 9l-5.2 1.8L10 16l-1.8-5.2L3 9l5.2-1.8Z"/></svg>'
+    ai: '<svg viewBox="0 0 20 20"><path d="M10 2l1.8 5.2L17 9l-5.2 1.8L10 16l-1.8-5.2L3 9l5.2-1.8Z"/></svg>'
   };
   const CHECK_SVG = '<svg viewBox="0 0 20 20"><path d="m4 10.5 4 4L16 6"/></svg>';
 
   function renderEngineBadge() {
     const badge = $('upEngineBadge');
-    if (isRelay()) {
+    if (isAi()) {
       const model = activeModelInfo();
       badge.textContent = model ? model.name : 'Real-ESRGAN';
       badge.title = model ? model.engineLabel : '';
@@ -695,7 +693,7 @@
 
       const icon = document.createElement('div');
       icon.className = 'model-icon';
-      icon.innerHTML = isRelay() ? ENGINE_ICONS.relay : ENGINE_ICONS.lanczos;
+      icon.innerHTML = isAi() ? ENGINE_ICONS.ai : ENGINE_ICONS.lanczos;
 
       const modelCopy = document.createElement('div');
       modelCopy.className = 'model-copy';
@@ -851,7 +849,7 @@
     });
     $('upModelsClose').addEventListener('click', () => setModelsView(false));
     window.pantoUpscale.onProgress(({ percent, elapsed, detail }) => {
-      if (isRelay() && typeof percent === 'number' && percent > 5 && percent < 100) {
+      if (isAi() && typeof percent === 'number' && percent > 5 && percent < 100) {
         const remaining = Math.max(0, (elapsed * (100 - percent)) / percent);
         statusDetail.textContent = `${detail ? `${detail} · ` : ''}${t('etaRemaining')} ${formatEta(remaining)}`;
       }
