@@ -327,11 +327,16 @@ pub fn start(
 }
 
 fn emit_progress(app: &AppHandle, percent: i32, started: Instant) {
+    emit_progress_detail(app, percent, started, None);
+}
+
+fn emit_progress_detail(app: &AppHandle, percent: i32, started: Instant, detail: Option<String>) {
     let _ = app.emit(
         "upscale-progress",
         serde_json::json!({
             "percent": percent.clamp(0, 100),
-            "elapsed": started.elapsed().as_secs_f64()
+            "elapsed": started.elapsed().as_secs_f64(),
+            "detail": detail
         }),
     );
 }
@@ -665,7 +670,16 @@ fn run_relay_stages(
                     let produced = count_files(&chunk_out, "png")
                         .max(last_output_frame(&log_path));
                     let percent = 5 + ((done + produced) * 85 / total.max(1)) as i32;
-                    emit_progress(app, percent, started);
+                    emit_progress_detail(
+                        app,
+                        percent,
+                        started,
+                        Some(format!(
+                            "frame {}/{}",
+                            (done + produced).min(total),
+                            total
+                        )),
+                    );
                     std::thread::sleep(std::time::Duration::from_millis(400));
                 }
                 Err(e) => return Err(e.to_string()),

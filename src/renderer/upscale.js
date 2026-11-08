@@ -59,6 +59,8 @@
       close: 'Cerrar',
       aiDetail: 'IA generativa · escala nativa',
       scalingAi: 'Escalando con IA…',
+      etaConfirm: (eta) => `RelayVSR tardaría aproximadamente ${eta} en este clip (IA en tu equipo va a ~30 s por frame). ¿Continuar? Para este clip Lanczos da 4K en segundos.`,
+      etaRemaining: 'restante',
       scalingAiDetail: 'RelayVSR · puede tardar varios minutos',
       modelMissingErr: 'Descarga el modelo RelayVSR desde Modelos.',
       aiTooBig: 'RelayVSR en este equipo (16 GB) admite entradas de hasta 854×480; para 1080p usa Lanczos.',
@@ -121,6 +123,8 @@
       close: 'Close',
       aiDetail: 'Generative AI · native scale',
       scalingAi: 'AI upscaling…',
+      etaConfirm: (eta) => `RelayVSR would take roughly ${eta} on this clip (AI on your machine runs at ~30 s per frame). Continue? Lanczos reaches 4K on this clip in seconds.`,
+      etaRemaining: 'remaining',
       scalingAiDetail: 'RelayVSR · may take several minutes',
       modelMissingErr: 'Download the RelayVSR model from Models.',
       aiTooBig: 'RelayVSR on this machine (16 GB) accepts inputs up to 854×480; use Lanczos for 1080p.',
@@ -178,6 +182,29 @@
     models: [],
     downloading: {}
   };
+
+  function formatEta(seconds) {
+    const total = Math.max(0, Math.round(seconds));
+    if (total < 90) return `≈ ${total} s`;
+    const minutes = Math.round(total / 60);
+    if (minutes < 90) return `≈ ${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `≈ ${hours} h ${rest} min` : `≈ ${hours} h`;
+  }
+
+  // Measured on M4 16 GB: ~7.5 s/frame at 640x360, ~30 s/frame at 832x480
+  // (window-size 8). Interpolates as (pixels)^2.7.
+  function relaySecondsPerFrame(width, height) {
+    return 7.5 * Math.pow((width * height) / (640 * 360), 2.7);
+  }
+
+  function relayEtaSeconds() {
+    if (!state.file) return 0;
+    const fps = state.file.fps > 0 ? state.file.fps : 30;
+    const frames = Math.max(1, Math.round(state.file.duration * fps));
+    return frames * relaySecondsPerFrame(state.file.width, state.file.height);
+  }
 
   function isRelay() {
     return state.engine !== 'lanczos';
@@ -544,6 +571,11 @@
 
   async function convert() {
     if (!state.file || state.converting || state.loading) return;
+
+    if (isRelay()) {
+      const eta = relayEtaSeconds();
+      if (eta > 600 && !window.confirm(t('etaConfirm')(formatEta(eta)))) return;
+    }
 
     state.converting = true;
     state.cancelRequested = false;
@@ -912,7 +944,11 @@
         renderModels();
       }
     });
-    window.pantoUpscale.onProgress(({ percent }) => {
+    window.pantoUpscale.onProgress(({ percent, elapsed, detail }) => {
+      if (isRelay() && typeof percent === 'number' && percent > 5 && percent < 100) {
+        const remaining = Math.max(0, (elapsed * (100 - percent)) / percent);
+        statusDetail.textContent = `${detail ? `${detail} · ` : ''}${t('etaRemaining')} ${formatEta(remaining)}`;
+      }
       if (!state.converting) return;
       const value = Number(percent);
       if (Number.isFinite(value)) setStatusProcessing(value);
