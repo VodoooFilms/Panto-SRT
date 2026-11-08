@@ -32,6 +32,8 @@
       useModel: 'Usar este modelo',
       downloadModel: 'Descargar modelo',
       deleteModel: 'Borrar modelo',
+      deleteTitle: 'Borrar modelo',
+      deleteAction: 'Borrar',
       deleteConfirm: (name) => `¿Borrar ${name}? Podrás descargarlo de nuevo cuando quieras.`,
       stopDownload: 'Detener descarga',
       unsupported: 'Formato no compatible.',
@@ -68,6 +70,8 @@
       useModel: 'Use this model',
       downloadModel: 'Download model',
       deleteModel: 'Delete model',
+      deleteTitle: 'Delete model',
+      deleteAction: 'Delete',
       deleteConfirm: (name) => `Delete ${name}? You can download it again anytime.`,
       stopDownload: 'Stop download',
       unsupported: 'Format not supported.',
@@ -89,7 +93,9 @@
     transcribing: false,
     lastExport: null,
     models: [],
-    downloading: {}
+    downloading: {},
+    pendingDelete: null,
+    deleting: false
   };
 
   function u(key, ...args) {
@@ -213,13 +219,7 @@
       trash.disabled = !model.downloaded || isDownloading;
       trash.addEventListener('click', async (event) => {
         event.stopPropagation();
-        if (!window.confirm(u('deleteConfirm', model.name))) return;
-        try {
-          state.models = await window.pantoSRT.deleteModel(model.id);
-          renderModels();
-        } catch (error) {
-          showError((error && error.message) || 'Error');
-        }
+        askDeleteModel(model);
       });
       actions.append(slot, trash);
 
@@ -247,6 +247,39 @@
         }
       });
       list.append(row);
+    }
+  }
+
+  // NOTE: window.confirm() is not implemented by Tauri's WKWebView and
+  // silently returns false, so deletion is confirmed with an in-app modal.
+  function askDeleteModel(model) {
+    if (!model.downloaded || state.deleting) return;
+    state.pendingDelete = model;
+    $('stDeleteDetail').textContent = u('deleteConfirm', model.name);
+    $('stDeleteModal').classList.remove('hidden');
+    $('stDeleteConfirm').focus();
+  }
+
+  function closeDeleteModal() {
+    state.pendingDelete = null;
+    $('stDeleteModal').classList.add('hidden');
+  }
+
+  async function confirmDeleteModel() {
+    const model = state.pendingDelete;
+    if (!model || state.deleting) return;
+    state.deleting = true;
+    $('stDeleteConfirm').disabled = true;
+    try {
+      state.models = await window.pantoSRT.deleteModel(model.id);
+      closeDeleteModal();
+      renderModels();
+    } catch (error) {
+      closeDeleteModal();
+      showError((error && error.message) || 'Error');
+    } finally {
+      state.deleting = false;
+      $('stDeleteConfirm').disabled = false;
     }
   }
 
@@ -508,6 +541,12 @@
     $('stResultReveal').title = u('showFile');
     $('stModelsClose').setAttribute('aria-label', u('close'));
     $('stModelsClose').title = u('close');
+    $('stDeleteTitle').textContent = u('deleteTitle');
+    $('stDeleteConfirm').textContent = u('deleteAction');
+    $('stDeleteCancel').textContent = u('cancel');
+    if (state.pendingDelete) {
+      $('stDeleteDetail').textContent = u('deleteConfirm', state.pendingDelete.name);
+    }
     $('stModelsToggle').setAttribute('aria-label', u('models'));
     $('stModelsToggle').title = u('models');
     renderModels();
@@ -518,6 +557,14 @@
       setModelsView($('stModelsPanel').classList.contains('hidden'));
     });
     $('stModelsClose').addEventListener('click', () => setModelsView(false));
+    $('stDeleteConfirm').addEventListener('click', confirmDeleteModel);
+    $('stDeleteCancel').addEventListener('click', closeDeleteModal);
+    $('stDeleteModal').addEventListener('click', (event) => {
+      if (event.target === $('stDeleteModal')) closeDeleteModal();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && state.pendingDelete && !state.deleting) closeDeleteModal();
+    });
 
     $('stDropZone').addEventListener('click', pickFromDialog);
     $('stDropZone').addEventListener('keydown', (event) => {

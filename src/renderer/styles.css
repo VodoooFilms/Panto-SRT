@@ -1040,6 +1040,9 @@ button { font: inherit; }
 .modal-actions button { height: 34px; border-radius: 7px; font-size: 11px; font-weight: 500; cursor: pointer; }
 .modal-actions .text-button { height: 26px; color: var(--muted); }
 .modal-actions .text-button:hover { color: var(--text); }
+.modal-actions .danger-action { border: 1px solid var(--error); color: #fff; background: var(--error); }
+.modal-actions .danger-action:hover:not(:disabled) { filter: brightness(1.08); }
+.modal-actions .danger-action:disabled { opacity: .55; cursor: default; }
 
 .hidden { display: none !important; }
 

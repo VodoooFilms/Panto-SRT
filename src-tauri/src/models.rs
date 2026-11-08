@@ -155,9 +155,71 @@ pub fn delete_model(paths: &EnginePaths, id: &str) -> Result<(), String> {
     // Also drop any partial download.
     let _ = std::fs::remove_file(path.with_extension("bin.part"));
     if active_model(paths) == id {
-        if let Some(other) = CATALOG.iter().find(|m| m.id != id && available(m)) {
+        // Switch only to a model that is actually on disk; otherwise clear
+        // the setting so the default engine applies instead of pointing at
+        // a file that no longer exists.
+        if let Some(other) = CATALOG
+            .iter()
+            .find(|m| m.id != id && available(m) && is_downloaded(paths, m))
+        {
             set_active_model(paths, other.id)?;
+        } else {
+            let _ = std::fs::remove_file(settings_path(paths));
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_paths(tag: &str) -> EnginePaths {
+        let dir = std::env::temp_dir().join(format!(
+            "panto-studio-models-test-{}-{}",
+            std::process::id(),
+            tag
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        EnginePaths {
+            resource_dir: None,
+            app_data_dir: dir,
+        }
+    }
+
+    #[test]
+    fn delete_model_removes_file_and_clears_active() {
+        let paths = temp_paths("delete");
+        let model = def(WHISPER_ID).unwrap();
+        let dir = whisper::models_dir(&paths);
+        let file = dir.join(model.file);
+        std::fs::write(&file, b"fake weights").unwrap();
+        std::fs::write(file.with_extension("bin.part"), b"partial").unwrap();
+        set_active_model(&paths, WHISPER_ID).unwrap();
+        assert!(is_downloaded(&paths, model));
+
+        delete_model(&paths, WHISPER_ID).unwrap();
+
+        assert!(!file.exists(), "model file must be deleted");
+        assert!(!file.with_extension("bin.part").exists());
+        assert!(!is_downloaded(&paths, model));
+        let _ = std::fs::remove_dir_all(&paths.app_data_dir);
+    }
+
+    #[test]
+    fn delete_active_switches_to_downloaded_other() {
+        let paths = temp_paths("switch");
+        let dir = whisper::models_dir(&paths);
+        for model in CATALOG.iter().filter(|m| available(m)) {
+            std::fs::write(dir.join(model.file), b"fake").unwrap();
+        }
+        set_active_model(&paths, WHISPER_ID).unwrap();
+
+        delete_model(&paths, WHISPER_ID).unwrap();
+
+        assert_ne!(active_model(&paths), WHISPER_ID);
+        assert!(is_downloaded(&paths, def(&active_model(&paths)).unwrap()));
+        let _ = std::fs::remove_dir_all(&paths.app_data_dir);
+    }
 }

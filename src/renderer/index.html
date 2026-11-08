@@ -297,6 +297,17 @@
         <div id="stModelsList"></div>
         <p class="models-foot" id="stModelsFoot">Toca un modelo para usarlo. Al borrar el activo se usará el otro si está descargado.</p>
       </section>
+
+      <div class="modal-backdrop hidden" id="stDeleteModal">
+        <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="stDeleteTitle" aria-describedby="stDeleteDetail">
+          <strong id="stDeleteTitle">Borrar modelo</strong>
+          <p id="stDeleteDetail"></p>
+          <div class="modal-actions">
+            <button class="danger-action" id="stDeleteConfirm">Borrar</button>
+            <button class="text-button" id="stDeleteCancel">Cancelar</button>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 
