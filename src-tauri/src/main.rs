@@ -151,7 +151,7 @@ fn convert_extensions(converter: &str) -> Vec<&str> {
 }
 
 #[tauri::command]
-fn select_convert_files(
+async fn select_convert_files(
     app: AppHandle,
     state: State<'_, AppState>,
     converter: String,
@@ -203,7 +203,7 @@ async fn inspect_convert_files(paths: Vec<String>) -> Result<Vec<media::FileDeta
 }
 
 #[tauri::command]
-fn select_convert_subtitle(
+async fn select_convert_subtitle(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<SubtitleFile>, String> {
@@ -246,7 +246,7 @@ fn inspect_convert_subtitle(path: String) -> Result<SubtitleFile, String> {
 }
 
 #[tauri::command]
-fn choose_convert_folder(
+async fn choose_convert_folder(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, String> {
@@ -287,7 +287,7 @@ fn cancel_conversion(state: State<'_, AppState>) -> bool {
 }
 
 #[tauri::command]
-fn select_upscale_video(
+async fn select_upscale_video(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<media::FileDetails>, String> {
@@ -328,7 +328,7 @@ async fn inspect_upscale_video(path: String) -> Result<media::FileDetails, Strin
 }
 
 #[tauri::command]
-fn choose_upscale_folder(
+async fn choose_upscale_folder(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, String> {
