@@ -41,8 +41,11 @@
       "../build/whisper/lib": "whisper/lib",
       "../build/nemo": "nemo",
       "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
-      "../build/sd/sd-cli": "sd/sd-cli",
-      "../build/sd/libstable-diffusion.dylib": "sd/libstable-diffusion.dylib"
+      "../build/esrgan/realesrgan-ncnn-vulkan": "esrgan/realesrgan-ncnn-vulkan",
+      "../build/esrgan/models/realesr-animevideov3-x2.param": "esrgan/models/realesr-animevideov3-x2.param",
+      "../build/esrgan/models/realesr-animevideov3-x2.bin": "esrgan/models/realesr-animevideov3-x2.bin",
+      "../build/esrgan/models/realesr-animevideov3-x4.param": "esrgan/models/realesr-animevideov3-x4.param",
+      "../build/esrgan/models/realesr-animevideov3-x4.bin": "esrgan/models/realesr-animevideov3-x4.bin"
     },
     "macOS": {
       "minimumSystemVersion": "13.4"

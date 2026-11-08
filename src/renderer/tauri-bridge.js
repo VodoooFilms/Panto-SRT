@@ -76,10 +76,6 @@
     showInFolder: (filePath) => invoke('show_in_folder', { filePath }),
     listModels: () => invoke('list_upscale_models'),
     setEngine: (engine) => invoke('set_upscale_engine', { engine }),
-    deleteModel: (modelId) => invoke('delete_upscale_model', { modelId }),
-    downloadModel: (modelId) => invoke('download_upscale_model', { modelId }),
-    cancelModelDownload: () => invoke('cancel_upscale_model_download'),
-    onProgress: (callback) => subscribe('upscale-progress', callback),
-    onModelDownloadProgress: (callback) => subscribe('upscale-model-download-progress', callback)
+    onProgress: (callback) => subscribe('upscale-progress', callback)
   };
 })();

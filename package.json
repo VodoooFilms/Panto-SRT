@@ -9,12 +9,12 @@
   "scripts": {
     "prepare:whisper": "node scripts/prepare-whisper.js",
     "prepare:nemo": "node scripts/prepare-nemo.js",
-    "prestart": "npm run prepare:whisper && npm run prepare:nemo && npm run prepare:sd",
+    "prestart": "npm run prepare:whisper && npm run prepare:nemo && npm run prepare:esrgan",
     "start": "cargo tauri dev",
     "check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "build": "npm run prepare:whisper && npm run prepare:nemo && npm run prepare:sd && cargo tauri build",
-    "prepare:sd": "node scripts/prepare-sd.js"
+    "build": "npm run prepare:whisper && npm run prepare:nemo && npm run prepare:esrgan && cargo tauri build",
+    "prepare:esrgan": "node scripts/prepare-esrgan.js"
   },
   "devDependencies": {
     "extract-zip": "^2.0.1"

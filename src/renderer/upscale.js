@@ -46,24 +46,18 @@
       footer: 'Procesado en tu equipo · sin subir nada',
       models: 'Modelos',
       modelsSubtitle: 'Elige el motor de escalado o libera espacio',
-      modelsFoot: 'Toca un modelo para usarlo. RelayVSR es IA generativa (2×/4× nativo) y tarda mucho más; Lanczos es instantáneo y sin descarga.',
+      modelsFoot: 'Los motores de IA ya vienen con la app (1,2 MB). Real-ESRGAN está hecho para animación y video; Lanczos es instantáneo pero solo redimensiona.',
       modelActive: 'Activo',
       modelReady: 'Listo',
       modelMissing: 'Sin descargar',
-      modelDownloading: 'descargando…',
       useModel: 'Usar este modelo',
-      downloadModel: 'Descargar modelo',
-      deleteModel: 'Borrar modelo',
-      deleteConfirm: (name) => `¿Borrar ${name}? Podrás descargarlo de nuevo cuando quieras.`,
-      stopDownload: 'Detener descarga',
       close: 'Cerrar',
-      aiDetail: 'IA generativa · escala nativa',
+      aiDetail: 'IA · modelos incluidos en la app',
       scalingAi: 'Escalando con IA…',
-      etaConfirm: (eta) => `RelayVSR tardaría aproximadamente ${eta} en este clip (IA en tu equipo va a ~30 s por frame). ¿Continuar? Para este clip Lanczos da 4K en segundos.`,
+      etaConfirm: (eta) => `El escalado con IA tomaría aproximadamente ${eta} en este clip. ¿Continuar? Lanczos da el mismo resultado en segundos.`,
       etaRemaining: 'restante',
-      scalingAiDetail: 'RelayVSR · puede tardar varios minutos',
-      modelMissingErr: 'Descarga el modelo RelayVSR desde Modelos.',
-      aiTooBig: 'RelayVSR en este equipo (16 GB) admite entradas de hasta 854×480; para 1080p usa Lanczos.',
+      scalingAiDetail: 'Real-ESRGAN · muy rápido · audio conservado',
+      modelMissingErr: 'El motor de IA no está disponible.',
       sdMissing: 'No se encontró el motor de IA (sd-cli) en la app.',
       sdFailed: 'El motor de IA falló.'
     },
@@ -110,24 +104,18 @@
       footer: 'Processed on your device · nothing uploaded',
       models: 'Models',
       modelsSubtitle: 'Choose the upscale engine or free up space',
-      modelsFoot: 'Tap a model to use it. RelayVSR is generative AI (native 2×/4×) and much slower; Lanczos is instant with no download.',
+      modelsFoot: 'AI engines ship inside the app (1.2 MB). Real-ESRGAN is made for animation and video; Lanczos is instant but only resizes.',
       modelActive: 'Active',
       modelReady: 'Ready',
       modelMissing: 'Not downloaded',
-      modelDownloading: 'downloading…',
       useModel: 'Use this model',
-      downloadModel: 'Download model',
-      deleteModel: 'Delete model',
-      deleteConfirm: (name) => `Delete ${name}? You can download it again anytime.`,
-      stopDownload: 'Stop download',
       close: 'Close',
-      aiDetail: 'Generative AI · native scale',
+      aiDetail: 'AI · models built into the app',
       scalingAi: 'AI upscaling…',
-      etaConfirm: (eta) => `RelayVSR would take roughly ${eta} on this clip (AI on your machine runs at ~30 s per frame). Continue? Lanczos reaches 4K on this clip in seconds.`,
+      etaConfirm: (eta) => `AI upscaling would take roughly ${eta} on this clip. Continue? Lanczos gets the same result in seconds.`,
       etaRemaining: 'remaining',
-      scalingAiDetail: 'RelayVSR · may take several minutes',
-      modelMissingErr: 'Download the RelayVSR model from Models.',
-      aiTooBig: 'RelayVSR on this machine (16 GB) accepts inputs up to 854×480; use Lanczos for 1080p.',
+      scalingAiDetail: 'Real-ESRGAN · very fast · audio preserved',
+      modelMissingErr: 'The AI engine is not available.',
       sdMissing: 'The AI engine (sd-cli) was not found in the app.',
       sdFailed: 'The AI engine failed.'
     }
@@ -179,8 +167,7 @@
     planRequest: 0,
     ffmpegAvailable: true,
     engine: 'lanczos',
-    models: [],
-    downloading: {}
+    models: []
   };
 
   function formatEta(seconds) {
@@ -193,17 +180,20 @@
     return rest ? `≈ ${hours} h ${rest} min` : `≈ ${hours} h`;
   }
 
-  // Measured on M4 16 GB: ~7.5 s/frame at 640x360, ~30 s/frame at 832x480
-  // (window-size 8). Interpolates as (pixels)^2.7.
-  function relaySecondsPerFrame(width, height) {
-    return 7.5 * Math.pow((width * height) / (640 * 360), 2.7);
+  // Measured on M4: ~0.3 s/frame (x2) and ~0.8 s/frame (x4) on 832x480;
+  // GPU-bound, so it grows near-linearly with pixel count.
+  function relaySecondsPerFrame(width, height, factor) {
+    const pixels = Math.max(1, (width * height) / (832 * 480));
+    const base = factor >= 4 ? 0.8 : 0.35;
+    return base * Math.max(0.5, Math.min(pixels, 20));
   }
 
   function relayEtaSeconds() {
     if (!state.file) return 0;
     const fps = state.file.fps > 0 ? state.file.fps : 30;
     const frames = Math.max(1, Math.round(state.file.duration * fps));
-    return frames * relaySecondsPerFrame(state.file.width, state.file.height);
+    const factor = state.engine === 'esr-x4' ? 4 : 2;
+    return frames * relaySecondsPerFrame(state.file.width, state.file.height, factor);
   }
 
   function isRelay() {
@@ -281,7 +271,7 @@
     statusIcon.textContent = '';
     if (isRelay()) {
       const model = activeModelInfo();
-      statusTitle.textContent = model ? model.name : 'RelayVSR';
+      statusTitle.textContent = model ? model.name : 'Real-ESRGAN';
       statusDetail.textContent = t('aiDetail');
     } else {
       statusTitle.textContent = t('ready');
@@ -391,7 +381,7 @@
       $('upOutputName').textContent = `${fileStem(state.file.name)}_${plan.label.toLowerCase()}.mp4`;
       $('upOutputDimensions').textContent = `${plan.targetWidth} × ${plan.targetHeight}`;
       $('upOutputSize').textContent = plan.estimatedBytes ? `≈ ${formatBytes(plan.estimatedBytes)}` : '—';
-      $('upOutputDetail').textContent = `${isRelay() ? 'RelayVSR IA' : 'Lanczos'} · ${planBars(plan)}`;
+      $('upOutputDetail').textContent = `${isRelay() ? 'Real-ESRGAN IA' : 'Lanczos'} · ${planBars(plan)}`;
       return;
     }
 
@@ -405,7 +395,7 @@
     $('upOutputName').textContent = '—';
     $('upOutputDimensions').textContent = '—';
     $('upOutputSize').textContent = '—';
-    $('upOutputDetail').textContent = `${isRelay() ? 'RelayVSR IA' : 'Lanczos'} · ${t('quality')}`;
+    $('upOutputDetail').textContent = `${isRelay() ? 'Real-ESRGAN IA' : 'Lanczos'} · ${t('quality')}`;
   }
 
   function renderActions() {
@@ -557,7 +547,6 @@
     let message;
     if (raw.startsWith('FFMPEG_MISSING')) message = t('ffmpegMissing');
     else if (raw.startsWith('MODEL_MISSING')) message = t('modelMissingErr');
-    else if (raw.startsWith('AI_INPUT_TOO_BIG')) message = t('aiTooBig');
     else if (raw.startsWith('SD_MISSING')) message = t('sdMissing');
     else if (raw.startsWith('SD_FAILED:')) message = raw.slice('SD_FAILED:'.length).trim() || t('sdFailed');
     else if (raw.startsWith('UNSUPPORTED')) message = t('unsupported');
@@ -682,16 +671,13 @@
     lanczos: '<svg viewBox="0 0 20 20"><path d="M3 10h2l2-5 3 10 3-8 2 3h2"/></svg>',
     relay: '<svg viewBox="0 0 20 20"><path d="M10 2l1.8 5.2L17 9l-5.2 1.8L10 16l-1.8-5.2L3 9l5.2-1.8Z"/></svg>'
   };
-  const STOP_SVG = '<svg viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" rx="2"/></svg>';
   const CHECK_SVG = '<svg viewBox="0 0 20 20"><path d="m4 10.5 4 4L16 6"/></svg>';
-  const TRASH_SVG = '<svg viewBox="0 0 20 20"><path d="M3 5h14M8 5V3.5A.5.5 0 0 1 8.5 3h3a.5.5 0 0 1 .5.5V5m3 0-.7 10a1.5 1.5 0 0 1-1.5 1.4H7.2A1.5 1.5 0 0 1 5.7 15L5 5m4 3.5v5M11 8.5v5"/></svg>';
-  const DOWNLOAD_SVG = '<svg viewBox="0 0 20 20"><path d="M10 3v10m0 0 4-4m-4 4L6 9M3.5 16.5h13"/></svg>';
 
   function renderEngineBadge() {
     const badge = $('upEngineBadge');
     if (isRelay()) {
       const model = activeModelInfo();
-      badge.textContent = model ? model.name : 'RelayVSR';
+      badge.textContent = model ? model.name : 'Real-ESRGAN';
       badge.title = model ? model.engineLabel : '';
     } else {
       badge.textContent = 'Lanczos';
@@ -704,102 +690,44 @@
     if (!list) return;
     list.textContent = '';
     for (const model of state.models) {
-      const downloading = state.downloading[model.id];
-      const isDownloading = downloading !== undefined;
       const row = document.createElement('div');
       row.className = `model-row${model.active ? '' : ' inactive'}`;
 
       const icon = document.createElement('div');
       icon.className = 'model-icon';
-      icon.innerHTML = model.builtin ? ENGINE_ICONS.lanczos : ENGINE_ICONS.relay;
+      icon.innerHTML = isRelay() ? ENGINE_ICONS.relay : ENGINE_ICONS.lanczos;
 
       const modelCopy = document.createElement('div');
       modelCopy.className = 'model-copy';
       const name = document.createElement('strong');
       name.textContent = model.name;
       const detail = document.createElement('small');
-      detail.textContent = isDownloading
-        ? `${model.engineLabel} · ${t('modelDownloading')}`
-        : model.engineLabel;
+      detail.textContent = model.engineLabel;
       modelCopy.append(name, detail);
 
       const status = document.createElement('div');
       status.className = 'model-status';
-      if (isDownloading) {
-        const pct = document.createElement('span');
-        pct.className = 'model-pct';
-        pct.textContent = `${downloading}% · ${formatBytes((model.size * downloading) / 100)} / ${formatBytes(model.size)}`;
-        const track = document.createElement('div');
-        track.className = 'mini-track';
-        const bar = document.createElement('div');
-        bar.style.width = `${downloading}%`;
-        track.append(bar);
-        status.append(pct, track);
-      } else {
-        const badge = document.createElement('span');
-        badge.className = `model-badge${model.active ? ' active' : ''}`;
-        badge.textContent = model.active ? t('modelActive') : model.downloaded ? t('modelReady') : t('modelMissing');
-        const size = document.createElement('span');
-        size.className = 'model-size';
-        size.textContent = model.builtin ? '—' : formatBytes(model.size);
-        status.append(badge, size);
-      }
+      const badge = document.createElement('span');
+      badge.className = `model-badge${model.active ? ' active' : ''}`;
+      badge.textContent = model.active ? t('modelActive') : t('modelReady');
+      const size = document.createElement('span');
+      size.className = 'model-size';
+      size.textContent = model.size > 0 ? formatBytes(model.size) : '—';
+      status.append(badge, size);
 
       const actions = document.createElement('div');
       actions.className = 'model-actions';
       const slot = document.createElement('button');
-      if (!model.downloaded && !isDownloading) {
-        slot.innerHTML = DOWNLOAD_SVG;
-        slot.title = t('downloadModel');
-        slot.setAttribute('aria-label', t('downloadModel'));
-        slot.addEventListener('click', (event) => {
-          event.stopPropagation();
-          downloadModel(model);
-        });
-      } else {
-        slot.className = model.active ? 'check-slot' : 'check-slot empty';
-        slot.innerHTML = CHECK_SVG;
-        slot.title = model.active ? t('modelActive') : t('useModel');
-        slot.setAttribute('aria-label', slot.title);
-        if (isDownloading) slot.disabled = true;
-      }
+      slot.className = model.active ? 'check-slot' : 'check-slot empty';
+      slot.innerHTML = CHECK_SVG;
+      slot.title = model.active ? t('modelActive') : t('useModel');
+      slot.setAttribute('aria-label', slot.title);
+      if (model.active) slot.disabled = true;
       actions.append(slot);
-      if (!model.builtin) {
-        const trash = document.createElement('button');
-        trash.className = 'danger';
-        trash.innerHTML = TRASH_SVG;
-        trash.title = t('deleteModel');
-        trash.setAttribute('aria-label', t('deleteModel'));
-        trash.disabled = !model.downloaded || isDownloading;
-        trash.addEventListener('click', async (event) => {
-          event.stopPropagation();
-          if (!window.confirm(t('deleteConfirm')(model.name))) return;
-          try {
-            state.models = await window.pantoUpscale.deleteModel(model.id);
-            syncEngineFromModels();
-          } catch (error) {
-            handleError(error);
-          }
-        });
-        actions.append(trash);
-      }
 
-      if (isDownloading) {
-        const stop = document.createElement('button');
-        stop.className = 'stop-download';
-        stop.innerHTML = STOP_SVG;
-        stop.title = t('stopDownload');
-        stop.setAttribute('aria-label', t('stopDownload'));
-        stop.addEventListener('click', (event) => {
-          event.stopPropagation();
-          window.pantoUpscale.cancelModelDownload();
-        });
-        row.append(icon, modelCopy, stop, status, actions);
-      } else {
-        row.append(icon, modelCopy, status, actions);
-      }
+      row.append(icon, modelCopy, status, actions);
       row.addEventListener('click', async () => {
-        if (!model.downloaded || model.active || isDownloading) return;
+        if (model.active) return;
         try {
           state.models = await window.pantoUpscale.setEngine(model.id);
           syncEngineFromModels();
@@ -835,22 +763,6 @@
       if (!state.converting && !state.result) setStatusIdle();
     } catch (_) {
       // Panel stays empty until the backend answers.
-    }
-  }
-
-  async function downloadModel(model) {
-    state.downloading[model.id] = 0;
-    renderModels();
-    try {
-      state.models = await window.pantoUpscale.downloadModel(model.id);
-      syncEngineFromModels();
-    } catch (error) {
-      const raw = typeof error === 'string' ? error : (error && error.message) || '';
-      if (raw !== 'cancelled') handleError(error);
-    } finally {
-      delete state.downloading[model.id];
-      renderModels();
-      renderActions();
     }
   }
 
@@ -938,12 +850,6 @@
       setModelsView($('upModelsPanel').classList.contains('hidden'));
     });
     $('upModelsClose').addEventListener('click', () => setModelsView(false));
-    window.pantoUpscale.onModelDownloadProgress((payload) => {
-      if (state.downloading[payload.id] !== undefined) {
-        state.downloading[payload.id] = payload.percent;
-        renderModels();
-      }
-    });
     window.pantoUpscale.onProgress(({ percent, elapsed, detail }) => {
       if (isRelay() && typeof percent === 'number' && percent > 5 && percent < 100) {
         const remaining = Math.max(0, (elapsed * (100 - percent)) / percent);

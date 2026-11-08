@@ -21,11 +21,11 @@ fi
 if [ -d "$ROOT/build/nemo" ]; then
   cp -R "$ROOT/build/nemo" "$APP/Contents/Resources/nemo"
 fi
-if [ -f "$ROOT/build/sd/sd-cli" ]; then
-  mkdir -p "$APP/Contents/Resources/sd"
-  cp "$ROOT/build/sd/sd-cli" "$APP/Contents/Resources/sd/sd-cli"
-  cp "$ROOT/build/sd/libstable-diffusion.dylib" "$APP/Contents/Resources/sd/"
-  chmod +x "$APP/Contents/Resources/sd/sd-cli"
+if [ -f "$ROOT/build/esrgan/realesrgan-ncnn-vulkan" ]; then
+  mkdir -p "$APP/Contents/Resources/esrgan/models"
+  cp "$ROOT/build/esrgan/realesrgan-ncnn-vulkan" "$APP/Contents/Resources/esrgan/realesrgan-ncnn-vulkan"
+  cp "$ROOT/build/esrgan/models/"*.param "$ROOT/build/esrgan/models/"*.bin "$APP/Contents/Resources/esrgan/models/"
+  chmod +x "$APP/Contents/Resources/esrgan/realesrgan-ncnn-vulkan"
 fi
 cp "$ROOT/THIRD_PARTY_NOTICES.md" "$APP/Contents/Resources/"
 chmod +x "$APP/Contents/MacOS/panto-studio" \

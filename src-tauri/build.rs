@@ -7,7 +7,7 @@ fn main() {
         if let Some(root) = root.parent() {
             let _ = std::fs::create_dir_all(root.join("build/whisper/lib"));
             let _ = std::fs::create_dir_all(root.join("build/nemo"));
-            let _ = std::fs::create_dir_all(root.join("build/sd"));
+            let _ = std::fs::create_dir_all(root.join("build/esrgan"));
         }
     }
     tauri_build::build()

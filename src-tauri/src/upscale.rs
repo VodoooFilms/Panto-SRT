@@ -149,7 +149,7 @@ pub fn start(
 
     let engine = request.engine.as_deref().unwrap_or(vsr::LANCZOS_ID);
     if engine != vsr::LANCZOS_ID {
-        return start_relay(
+        return start_ai(
             app,
             slot,
             paths,
@@ -390,20 +390,6 @@ fn sorted_files(dir: &Path, extension: &str) -> Vec<PathBuf> {
     files
 }
 
-/// sd-cli only writes output PNGs when a chunk finishes, but it logs
-/// "RelayVSR output frame N/M" as it goes — parse that for live progress.
-fn last_output_frame(log: &Path) -> usize {
-    let Ok(text) = std::fs::read_to_string(log) else {
-        return 0;
-    };
-    let Some(pos) = text.rfind("output frame ") else {
-        return 0;
-    };
-    let rest = &text[pos + "output frame ".len()..];
-    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-    digits.parse().unwrap_or(0)
-}
-
 fn log_tail(path: &Path, max_chars: usize) -> String {
     let text = std::fs::read_to_string(path).unwrap_or_default();
     let lines: Vec<&str> = text
@@ -419,10 +405,11 @@ fn log_tail(path: &Path, max_chars: usize) -> String {
     }
 }
 
-/// RelayVSR pipeline: extract frames → sd-cli (in RAM-friendly chunks) →
-/// ffmpeg encode to the selected target with the original audio muxed back.
+/// Real-ESRGAN pipeline: extract PNG frames → realesrgan-ncnn-vulkan (hosts
+/// everything on the GPU, so all frames go in a single pass) → ffmpeg encode
+/// to the selected target with the original audio muxed back.
 #[allow(clippy::too_many_arguments)]
-fn start_relay(
+fn start_ai(
     app: &AppHandle,
     slot: &ActiveSlot,
     paths: &EnginePaths,
@@ -432,18 +419,9 @@ fn start_relay(
     probe: &media::ProbeInfo,
     engine_id: &str,
 ) -> Result<UpscaleResult, String> {
-    let model = vsr::def(engine_id).ok_or_else(|| "MODEL_MISSING".to_string())?;
-    if !vsr::is_downloaded(paths, model) {
-        return Err("MODEL_MISSING".to_string());
-    }
-    // RelayVSR's Wan backbone holds its weights plus full-frame activations
-    // in Metal memory; above ~480p input it runs out of device memory on a
-    // 16 GB machine (verified empirically). Fail fast with a clear message.
-    if (probe.width as u64) * (probe.height as u64) > 854 * 480 {
-        return Err("AI_INPUT_TOO_BIG".to_string());
-    }
-    let sd_cli = vsr::find_sd_cli(paths).ok_or_else(|| "SD_MISSING".to_string())?;
-    let weight_files = vsr::file_paths(paths, model);
+    let model = vsr::def(paths, engine_id).ok_or_else(|| "MODEL_MISSING".to_string())?;
+    let esrgan = vsr::find_realesrgan(paths).ok_or_else(|| "SD_MISSING".to_string())?;
+    let models_dir = vsr::models_dir(paths).ok_or_else(|| "SD_MISSING".to_string())?;
     let ffmpeg = media::ffmpeg_path().ok_or_else(|| "FFMPEG_MISSING".to_string())?;
 
     let factor = model.factor;
@@ -484,7 +462,7 @@ fn start_relay(
     }
 
     let work = std::env::temp_dir().join(format!(
-        "panto-studio-vsr-{}-{}",
+        "panto-studio-esr-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -494,16 +472,15 @@ fn start_relay(
     let frames_in = work.join("in");
     let frames_out = work.join("out");
 
-    let result = run_relay_stages(
+    let result = run_ai_stages(
         app,
         slot,
         &cancel,
         started,
-        RelayJob {
+        EsrJob {
             ffmpeg: &ffmpeg,
-            sd_cli: &sd_cli,
-            diffusion: &weight_files[0],
-            flash: &weight_files[1],
+            esrgan: &esrgan,
+            models_dir: &models_dir,
             factor,
             input,
             output: &output,
@@ -549,11 +526,10 @@ fn start_relay(
     })
 }
 
-struct RelayJob<'a> {
+struct EsrJob<'a> {
     ffmpeg: &'a str,
-    sd_cli: &'a Path,
-    diffusion: &'a Path,
-    flash: &'a Path,
+    esrgan: &'a Path,
+    models_dir: &'a Path,
     factor: u32,
     input: &'a Path,
     output: &'a Path,
@@ -566,26 +542,26 @@ struct RelayJob<'a> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run_relay_stages(
+fn run_ai_stages(
     app: &AppHandle,
     slot: &ActiveSlot,
     cancel: &Arc<AtomicBool>,
     started: Instant,
-    job: RelayJob,
+    job: EsrJob,
 ) -> Result<(), String> {
     std::fs::create_dir_all(job.frames_in).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(job.frames_out).map_err(|e| e.to_string())?;
     let fps = if job.probe.fps > 0.0 { job.probe.fps } else { 30.0 };
-    let fps_int = fps.round().max(1.0) as u32;
 
-    // Stage 1 (0–5%): extract frames as high-quality JPEGs.
+    // Stage 1 (0–5%): extract frames as PNG — the bundled realesrgan
+    // runner cannot decode JPEG.
     emit_progress(app, 1, started);
     let mut extract = Command::new(job.ffmpeg);
     extract
         .args(["-hide_banner", "-y", "-i"])
         .arg(job.input)
-        .args(["-map", "0:v:0", "-an", "-q:v", "2"])
-        .arg(job.frames_in.join("%06d.jpg"))
+        .args(["-map", "0:v:0", "-an"])
+        .arg(job.frames_in.join("%06d.png"))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -597,112 +573,62 @@ fn run_relay_stages(
     if !status.success() {
         return Err("FFMPEG_FAILED: frame extraction failed.".to_string());
     }
-    let input_frames = sorted_files(job.frames_in, "jpg");
+    let input_frames = sorted_files(job.frames_in, "png");
     let total = input_frames.len();
     if total == 0 {
         return Err("FFMPEG_FAILED: no frames extracted.".to_string());
     }
     emit_progress(app, 5, started);
 
-    // Stage 2 (5–90%): sd-cli per chunk. It holds every frame of the run in
-    // RAM, so chunks are sized to keep in+out frames near a 2 GB budget.
-    let bytes_in = (job.probe.width as u64) * (job.probe.height as u64) * 3;
-    let bytes_out = bytes_in.saturating_mul((job.factor as u64).pow(2));
-    let per_frame = (bytes_in + bytes_out).max(1);
-    let chunk_frames = (2_000_000_000u64 / per_frame).clamp(24, 180) as usize;
+    // Stage 2 (5–90%): the compact Real-ESRGAN runner keeps its whole state
+    // on the GPU, so every frame goes through in a single invocation.
+    let log_path = job.work.join("esrgan.log");
+    let log_file = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
+    let log_file_err = log_file.try_clone().map_err(|e| e.to_string())?;
+    let mut command = Command::new(job.esrgan);
+    command
+        .arg("-i")
+        .arg(job.frames_in)
+        .arg("-o")
+        .arg(job.frames_out)
+        .args(["-n", "realesr-animevideov3", "-s"])
+        .arg(job.factor.to_string())
+        .args(["-m"]).arg(job.models_dir)
+        .args(["-f", "png"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(log_file))
+        .stderr(Stdio::from(log_file_err));
+    let mut child = spawn_registered(slot, &mut command)?;
 
-    let mut done = 0usize;
-    let mut chunks = input_frames.chunks(chunk_frames).peekable();
-    let mut chunk_index = 0usize;
-    while let Some(chunk) = chunks.next() {
+    let mut saw = 0usize;
+    let status = loop {
         if cancel.load(Ordering::SeqCst) {
-            return Err("CANCELLED".to_string());
+            process::terminate(child.id());
         }
-        let chunk_in = job.work.join(format!("chunk-{chunk_index}-in"));
-        let chunk_out = job.work.join(format!("chunk-{chunk_index}-out"));
-        std::fs::create_dir_all(&chunk_in).map_err(|e| e.to_string())?;
-        std::fs::create_dir_all(&chunk_out).map_err(|e| e.to_string())?;
-        for frame in chunk {
-            let name = frame.file_name().ok_or("STATE")?;
-            let link = chunk_in.join(name);
-            if std::fs::hard_link(frame, &link).is_err() {
-                std::fs::copy(frame, &link).map_err(|e| e.to_string())?;
-            }
-        }
-
-        let log_path = job.work.join(format!("chunk-{chunk_index}.log"));
-        let log_file = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
-        let log_file_err = log_file.try_clone().map_err(|e| e.to_string())?;
-
-        let mut command = Command::new(job.sd_cli);
-        command
-            .args(["-M", "vid_upscale", "--diffusion-model"])
-            .arg(job.diffusion)
-            .arg("--vae")
-            .arg(job.flash)
-            .arg("--input-frames")
-            .arg(&chunk_in)
-            .args([
-                "--upscale-factor",
-                &job.factor.to_string(),
-                "--fps",
-                &fps_int.to_string(),
-                "--vsr-window-size",
-                "16",
-                "-s",
-                "42",
-                "-o",
-            ])
-            .arg(chunk_out.join("%06d.png"))
-            .stdin(Stdio::null())
-            .stdout(Stdio::from(log_file))
-            .stderr(Stdio::from(log_file_err));
-        let mut child = spawn_registered(slot, &mut command)?;
-        let pid = child.id();
-
-        let status = loop {
-            if cancel.load(Ordering::SeqCst) {
-                process::terminate(pid);
-            }
-            match child.try_wait() {
-                Ok(Some(status)) => break status,
-                Ok(None) => {
-                    let produced = count_files(&chunk_out, "png")
-                        .max(last_output_frame(&log_path));
-                    let percent = 5 + ((done + produced) * 85 / total.max(1)) as i32;
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                let produced = count_files(job.frames_out, "png");
+                if produced > saw {
+                    saw = produced;
+                    let percent = 5 + (produced * 85 / total.max(1)) as i32;
                     emit_progress_detail(
                         app,
                         percent,
                         started,
-                        Some(format!(
-                            "frame {}/{}",
-                            (done + produced).min(total),
-                            total
-                        )),
+                        Some(format!("frame {}/{}", produced.min(total), total)),
                     );
-                    std::thread::sleep(std::time::Duration::from_millis(400));
                 }
-                Err(e) => return Err(e.to_string()),
+                std::thread::sleep(std::time::Duration::from_millis(300));
             }
-        };
-        if cancel.load(Ordering::SeqCst) {
-            return Err("CANCELLED".to_string());
+            Err(e) => return Err(e.to_string()),
         }
-        if !status.success() {
-            return Err(format!("SD_FAILED: {}", log_tail(&log_path, 400)));
-        }
-
-        for (offset, produced) in sorted_files(&chunk_out, "png").into_iter().enumerate() {
-            let destination = job
-                .frames_out
-                .join(format!("{:06}.png", done + offset + 1));
-            std::fs::rename(&produced, &destination).map_err(|e| e.to_string())?;
-        }
-        done += chunk.len();
-        chunk_index += 1;
-        let _ = std::fs::remove_dir_all(&chunk_in);
-        let _ = std::fs::remove_dir_all(&chunk_out);
-        emit_progress(app, 5 + (done * 85 / total.max(1)) as i32, started);
+    };
+    if cancel.load(Ordering::SeqCst) {
+        return Err("CANCELLED".to_string());
+    }
+    if !status.success() {
+        return Err(format!("SD_FAILED: {}", log_tail(&log_path, 400)));
     }
 
     // Stage 3 (90–100%): encode to the selected target and mux the audio.

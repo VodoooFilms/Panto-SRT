@@ -1,99 +1,100 @@
-//! RelayVSR (AI video super-resolution) for the Upscale tab: model catalog,
-//! engine selection and `sd-cli` (stable-diffusion.cpp) discovery.
+//! AI video super-resolution for the Upscale tab: engine catalog, engine
+//! selection and `realesrgan-ncnn-vulkan` discovery.
 //!
-//! Weights are the Comfy-Org repackaged checkpoints (Apache-2.0), downloaded
-//! on demand into the same `models` folder the Subtitles engines use.
+//! Real-ESRGAN `realesr-animevideov3` (BSD-3-Clause, SRVGGNetCompact) is a
+//! compact ~1.2 MB-per-scale model for animated/video content; the weights and
+//! the MIT ncnn-vulkan runner ship inside the app bundle, so nothing is ever
+//! downloaded.
 
 use crate::whisper::EnginePaths;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub const LANCZOS_ID: &str = "lanczos";
-
-pub struct VsrFile {
-    pub file: &'static str,
-    pub url: &'static str,
-    pub size: u64,
-    pub sha256: &'static str,
-}
+pub const ESR_X2_ID: &str = "esr-x2";
+pub const ESR_X4_ID: &str = "esr-x4";
 
 pub struct VsrModelDef {
     pub id: &'static str,
     pub name: &'static str,
     pub engine_label: &'static str,
     pub factor: u32,
-    pub files: &'static [VsrFile],
 }
-
-const X2_FILES: &[VsrFile] = &[
-    VsrFile {
-        file: "relayvsr_x2_diffusion.safetensors",
-        url: "https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/diffusion_models/relayvsr_x2_lightx2v_int8_convrot.safetensors?download=true",
-        size: 5_163_295_248,
-        sha256: "240e75e0c17cf2845d559b25254a230ff7458f81449d7a8c5e7e3fb8275c7b3c",
-    },
-    VsrFile {
-        file: "relayvsr_x2_flash.safetensors",
-        url: "https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/vae/relayvsr_flash_vae_x2_fp32.safetensors?download=true",
-        size: 127_759_464,
-        sha256: "b5bb0339acb5b52545911ea29a51b4c5b805776a779222b5a14591571f42e21c",
-    },
-];
-
-const X4_FILES: &[VsrFile] = &[
-    VsrFile {
-        file: "relayvsr_x4_diffusion.safetensors",
-        url: "https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/diffusion_models/relayvsr_x4_int8_convrot.safetensors?download=true",
-        size: 5_164_179_952,
-        sha256: "21303b3c5f9ab4e1fd3fe00df5dd2e0b343f0cf2e3d269e03a9872000a313a2e",
-    },
-    VsrFile {
-        file: "relayvsr_x4_flash.safetensors",
-        url: "https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/vae/relayvsr_flash_vae_x4_fp32.safetensors?download=true",
-        size: 127_759_784,
-        sha256: "7b8b8c99275fd5c4501b0589cc7b4c4506456a5df83160ef4e207e147b30f714",
-    },
-];
 
 pub const CATALOG: &[VsrModelDef] = &[
     VsrModelDef {
-        id: "relay-x2",
-        name: "RelayVSR 2×",
-        engine_label: "IA · sd.cpp (Metal)",
+        id: ESR_X2_ID,
+        name: "Real-ESRGAN 2×",
+        engine_label: "IA · ncnn (GPU)",
         factor: 2,
-        files: X2_FILES,
     },
     VsrModelDef {
-        id: "relay-x4",
-        name: "RelayVSR 4×",
-        engine_label: "IA · sd.cpp (Metal)",
+        id: ESR_X4_ID,
+        name: "Real-ESRGAN 4×",
+        engine_label: "IA · ncnn (GPU)",
         factor: 4,
-        files: X4_FILES,
     },
 ];
 
-/// RelayVSR via stable-diffusion.cpp is currently shipped for macOS only.
-pub fn available(model: &VsrModelDef) -> bool {
-    let _ = model;
-    cfg!(target_os = "macos")
+/// Weight files per scale (shipped in `Resources/esrgan/models/`).
+fn model_files(factor: u32) -> [String; 2] {
+    [
+        format!("realesr-animevideov3-x{factor}.param"),
+        format!("realesr-animevideov3-x{factor}.bin"),
+    ]
 }
 
-pub fn def(id: &str) -> Option<&'static VsrModelDef> {
-    CATALOG.iter().find(|m| m.id == id && available(m))
+/// Locate the bundled `realesrgan-ncnn-vulkan` runner.
+pub fn find_realesrgan(paths: &EnginePaths) -> Option<PathBuf> {
+    let exe = if cfg!(windows) {
+        "realesrgan-ncnn-vulkan.exe"
+    } else {
+        "realesrgan-ncnn-vulkan"
+    };
+    let mut candidates = Vec::new();
+    if let Some(res) = &paths.resource_dir {
+        candidates.push(res.join("esrgan").join(exe));
+    }
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    if let Some(root) = manifest.parent() {
+        candidates.push(root.join("build").join("esrgan").join(exe));
+    }
+    candidates.into_iter().find(|c| c.exists())
 }
 
-pub fn total_size(model: &VsrModelDef) -> u64 {
-    model.files.iter().map(|f| f.size).sum()
+pub fn models_dir(paths: &EnginePaths) -> Option<PathBuf> {
+    let relative = Path::new("esrgan").join("models");
+    if let Some(res) = &paths.resource_dir {
+        let dir = res.join(&relative);
+        if dir.is_dir() {
+            return Some(dir);
+        }
+    }
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    if let Some(root) = manifest.parent() {
+        let dir = root.join("build").join("esrgan").join("models");
+        if dir.is_dir() {
+            return Some(dir);
+        }
+    }
+    None
 }
 
-pub fn is_downloaded(paths: &EnginePaths, model: &VsrModelDef) -> bool {
-    let dir = crate::whisper::models_dir(paths);
-    model.files.iter().all(|f| dir.join(f.file).exists())
+/// An engine is usable only when both the runner and its weights are present.
+pub fn available(model: &VsrModelDef, paths: &EnginePaths) -> bool {
+    if !cfg!(target_os = "macos") {
+        return false;
+    }
+    find_realesrgan(paths).is_some()
+        && models_dir(paths).is_some_and(|dir| {
+            model_files(model.factor).iter().all(|f| dir.join(f).exists())
+        })
 }
 
-pub fn file_paths(paths: &EnginePaths, model: &VsrModelDef) -> Vec<PathBuf> {
-    let dir = crate::whisper::models_dir(paths);
-    model.files.iter().map(|f| dir.join(f.file)).collect()
+pub fn def(paths: &EnginePaths, id: &str) -> Option<&'static VsrModelDef> {
+    CATALOG
+        .iter()
+        .find(|m| m.id == id && available(m, paths))
 }
 
 fn settings_path(paths: &EnginePaths) -> PathBuf {
@@ -104,7 +105,17 @@ pub fn active_engine(paths: &EnginePaths) -> String {
     if let Ok(raw) = std::fs::read_to_string(settings_path(paths)) {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) {
             if let Some(id) = value.get("upscaleEngine").and_then(|v| v.as_str()) {
-                if id == LANCZOS_ID || def(id).is_some() {
+                // "relay-x2" from the previous RelayVSR build maps onto the
+                // same 2× slot so the AI choice survives upgrades.
+                let id = match id {
+                    "relay-x2" => ESR_X2_ID,
+                    "relay-x4" => ESR_X4_ID,
+                    other => other,
+                };
+                if id == LANCZOS_ID {
+                    return id.to_string();
+                }
+                if def(paths, id).is_some() {
                     return id.to_string();
                 }
             }
@@ -114,7 +125,7 @@ pub fn active_engine(paths: &EnginePaths) -> String {
 }
 
 pub fn set_active_engine(paths: &EnginePaths, id: &str) -> Result<(), String> {
-    if id != LANCZOS_ID && def(id).is_none() {
+    if id != LANCZOS_ID && def(paths, id).is_none() {
         return Err(format!("Motor desconocido: {id}"));
     }
     let _ = std::fs::create_dir_all(&paths.app_data_dir);
@@ -148,55 +159,29 @@ pub fn list_models(paths: &EnginePaths) -> Vec<UpscaleModelInfo> {
         active: active == LANCZOS_ID,
         builtin: true,
     }];
-    for model in CATALOG.iter().filter(|m| available(m)) {
-        let downloaded = is_downloaded(paths, model);
-        let size = if downloaded {
-            file_paths(paths, model)
-                .iter()
-                .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
-                .sum()
-        } else {
-            total_size(model)
-        };
+    for model in CATALOG.iter().filter(|m| available(m, paths)) {
+        let size = files(paths, model)
+            .iter()
+            .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+            .sum();
         list.push(UpscaleModelInfo {
             id: model.id.to_string(),
             name: model.name.to_string(),
             engine_label: model.engine_label.to_string(),
             size,
-            downloaded,
+            downloaded: true,
             active: active == model.id,
-            builtin: false,
+            builtin: true,
         });
     }
     list
 }
 
-pub fn delete_model(paths: &EnginePaths, id: &str) -> Result<(), String> {
-    let model = def(id).ok_or_else(|| format!("Modelo desconocido: {id}"))?;
-    for path in file_paths(paths, model) {
-        if path.exists() {
-            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
-        }
-        let _ = std::fs::remove_file(path.with_extension("bin.part"));
-    }
-    if active_engine(paths) == id {
-        set_active_engine(paths, LANCZOS_ID)?;
-    }
-    Ok(())
-}
-
-/// Locate the bundled `sd-cli` (stable-diffusion.cpp) binary.
-pub fn find_sd_cli(paths: &EnginePaths) -> Option<PathBuf> {
-    let exe = if cfg!(windows) { "sd-cli.exe" } else { "sd-cli" };
-    let mut candidates = Vec::new();
-    if let Some(res) = &paths.resource_dir {
-        candidates.push(res.join("sd").join(exe));
-    }
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    if let Some(root) = manifest.parent() {
-        candidates.push(root.join("build").join("sd").join(exe));
-    }
-    candidates.push(PathBuf::from("/opt/homebrew/bin/sd-cli"));
-    candidates.push(PathBuf::from("/usr/local/bin/sd-cli"));
-    candidates.into_iter().find(|c| c.exists())
+/// Weight file paths for a model (param + bin, in the shipped models dir).
+pub fn files(paths: &EnginePaths, model: &VsrModelDef) -> Vec<PathBuf> {
+    let dir = models_dir(paths).unwrap_or_default();
+    model_files(model.factor)
+        .iter()
+        .map(|f| dir.join(f))
+        .collect()
 }

@@ -10,4 +10,4 @@ build/nemo/
 .vscode/
 .DS_Store
 *.log
-build/sd/
+build/esrgan/

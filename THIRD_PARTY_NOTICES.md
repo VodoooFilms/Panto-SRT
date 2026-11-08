@@ -53,15 +53,18 @@ from the OpenAI Whisper models.
 Emojis, icons and artwork bundled with the application remain property of their
 respective owners.
 
-## stable-diffusion.cpp — RelayVSR engine
+## Real-ESRGAN ncnn Vulkan — AI upscaling runner
 
-- Home: https://github.com/leejet/stable-diffusion.cpp
-- License: MIT
+- Home: https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan
+- Runner license: MIT (Copyright (c) 2021 Xintao Wang)
+- Built on Tencent's ncnn (https://github.com/Tencent/ncnn)
 
-## RelayVSR — AI upscaling models
+## Real-ESRGAN — AI upscaling weights
 
-- Home: https://github.com/kopperx/RelayVSR
-- Paper: https://arxiv.org/abs/2609.37850
-- Weights (Comfy-Org repackaged): https://huggingface.co/Comfy-Org/RelayVSR
-- License: Apache License 2.0 (code and repackaged weights; the Wan upstream
-  implementation retains its original copyright notice)
+- Home: https://github.com/xinntao/Real-ESRGAN
+- Paper: https://arxiv.org/abs/2107.10833
+- Copyright (c) 2021, Xintao Wang
+- License: BSD 3-Clause
+- Models shipped: `realesr-animevideov3` (x2/x4), ncnn copy mirrored at
+  https://huggingface.co/edgetools/realesrgan
+
