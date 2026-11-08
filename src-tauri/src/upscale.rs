@@ -385,6 +385,20 @@ fn sorted_files(dir: &Path, extension: &str) -> Vec<PathBuf> {
     files
 }
 
+/// sd-cli only writes output PNGs when a chunk finishes, but it logs
+/// "RelayVSR output frame N/M" as it goes — parse that for live progress.
+fn last_output_frame(log: &Path) -> usize {
+    let Ok(text) = std::fs::read_to_string(log) else {
+        return 0;
+    };
+    let Some(pos) = text.rfind("output frame ") else {
+        return 0;
+    };
+    let rest = &text[pos + "output frame ".len()..];
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().unwrap_or(0)
+}
+
 fn log_tail(path: &Path, max_chars: usize) -> String {
     let text = std::fs::read_to_string(path).unwrap_or_default();
     let lines: Vec<&str> = text
@@ -648,7 +662,8 @@ fn run_relay_stages(
             match child.try_wait() {
                 Ok(Some(status)) => break status,
                 Ok(None) => {
-                    let produced = count_files(&chunk_out, "png");
+                    let produced = count_files(&chunk_out, "png")
+                        .max(last_output_frame(&log_path));
                     let percent = 5 + ((done + produced) * 85 / total.max(1)) as i32;
                     emit_progress(app, percent, started);
                     std::thread::sleep(std::time::Duration::from_millis(400));
