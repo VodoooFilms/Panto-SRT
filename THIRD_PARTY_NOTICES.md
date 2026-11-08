@@ -52,3 +52,16 @@ from the OpenAI Whisper models.
 
 Emojis, icons and artwork bundled with the application remain property of their
 respective owners.
+
+## stable-diffusion.cpp — RelayVSR engine
+
+- Home: https://github.com/leejet/stable-diffusion.cpp
+- License: MIT
+
+## RelayVSR — AI upscaling models
+
+- Home: https://github.com/kopperx/RelayVSR
+- Paper: https://arxiv.org/abs/2609.37850
+- Weights (Comfy-Org repackaged): https://huggingface.co/Comfy-Org/RelayVSR
+- License: Apache License 2.0 (code and repackaged weights; the Wan upstream
+  implementation retains its original copyright notice)

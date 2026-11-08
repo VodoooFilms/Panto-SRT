@@ -2,18 +2,19 @@
   "name": "panto-studio",
   "version": "0.1.0",
   "private": true,
-  "description": "Convert, upscale and subtitle video \u2014 private, local media tools",
+  "description": "Convert, upscale and subtitle video — private, local media tools",
   "author": "Panto Studio",
   "license": "MIT",
   "homepage": "https://panto.app/studio",
   "scripts": {
     "prepare:whisper": "node scripts/prepare-whisper.js",
     "prepare:nemo": "node scripts/prepare-nemo.js",
-    "prestart": "npm run prepare:whisper && npm run prepare:nemo",
+    "prestart": "npm run prepare:whisper && npm run prepare:nemo && npm run prepare:sd",
     "start": "cargo tauri dev",
     "check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "build": "npm run prepare:whisper && npm run prepare:nemo && cargo tauri build"
+    "build": "npm run prepare:whisper && npm run prepare:nemo && npm run prepare:sd && cargo tauri build",
+    "prepare:sd": "node scripts/prepare-sd.js"
   },
   "devDependencies": {
     "extract-zip": "^2.0.1"

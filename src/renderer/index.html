@@ -116,6 +116,7 @@
       <div class="tab-scroll">
         <div class="tab-toolbar">
           <span class="engine-badge" id="upEngineBadge" title="Escalador Lanczos">Lanczos</span>
+          <button class="models-toggle" id="upModelsToggle" aria-label="Modelos" title="Modelos">Modelos</button>
         </div>
 
         <section class="media-card input-card" id="upInputCard" tabindex="0" role="button" aria-label="Seleccionar un vídeo">
@@ -210,6 +211,18 @@
         <button class="primary" id="upConvertButton" disabled>Escalar a 1080p</button>
         <button class="primary success hidden" id="upRevealButton">Mostrar en Finder</button>
       </div>
+
+      <section class="models-panel hidden" id="upModelsPanel" aria-label="Modelos">
+        <div class="models-head">
+          <div>
+            <strong id="upModelsTitle">Modelos</strong>
+            <span id="upModelsSubtitle">Elige el motor de escalado o libera espacio</span>
+          </div>
+          <button class="icon-button" id="upModelsClose" aria-label="Cerrar">×</button>
+        </div>
+        <div id="upModelsList"></div>
+        <p class="models-foot" id="upModelsFoot">Toca un modelo para usarlo. RelayVSR es IA generativa (2×/4× nativo); Lanczos es instantáneo y sin descarga.</p>
+      </section>
     </section>
 
     <!-- Subtítulos -->

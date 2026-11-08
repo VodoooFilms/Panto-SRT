@@ -9,6 +9,7 @@ mod parakeet;
 mod plan;
 mod process;
 mod upscale;
+mod vsr;
 mod whisper;
 
 use grouping::{Clip, GroupOptions, Word};
@@ -31,6 +32,9 @@ struct AppState {
     download_in_progress: Arc<AtomicBool>,
     convert_process: ActiveSlot,
     upscale_process: ActiveSlot,
+    vsr_download_cancelled: Arc<AtomicBool>,
+    vsr_download_pid: Arc<Mutex<Option<u32>>>,
+    vsr_download_in_progress: Arc<AtomicBool>,
 }
 
 impl Default for AppState {
@@ -44,6 +48,9 @@ impl Default for AppState {
             download_in_progress: Arc::new(AtomicBool::new(false)),
             convert_process: Arc::new(Mutex::new(None)),
             upscale_process: Arc::new(Mutex::new(None)),
+            vsr_download_cancelled: Arc::new(AtomicBool::new(false)),
+            vsr_download_pid: Arc::new(Mutex::new(None)),
+            vsr_download_in_progress: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -360,8 +367,9 @@ async fn start_upscale(
 ) -> Result<upscale::UpscaleResult, String> {
     let slot = Arc::clone(&state.upscale_process);
     let app_handle = app.clone();
+    let paths = engine_paths(&app);
     tauri::async_runtime::spawn_blocking(move || {
-        upscale::start(&app_handle, &slot, request)
+        upscale::start(&app_handle, &slot, &paths, request)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -370,6 +378,111 @@ async fn start_upscale(
 #[tauri::command]
 fn cancel_upscale(state: State<'_, AppState>) -> bool {
     process::cancel(&state.upscale_process)
+}
+
+#[tauri::command]
+fn list_upscale_models(app: AppHandle) -> Vec<vsr::UpscaleModelInfo> {
+    vsr::list_models(&engine_paths(&app))
+}
+
+#[tauri::command]
+fn set_upscale_engine(app: AppHandle, engine: String) -> Result<Vec<vsr::UpscaleModelInfo>, String> {
+    let paths = engine_paths(&app);
+    vsr::set_active_engine(&paths, &engine)?;
+    Ok(vsr::list_models(&paths))
+}
+
+#[tauri::command]
+fn delete_upscale_model(app: AppHandle, model_id: String) -> Result<Vec<vsr::UpscaleModelInfo>, String> {
+    let paths = engine_paths(&app);
+    vsr::delete_model(&paths, &model_id)?;
+    Ok(vsr::list_models(&paths))
+}
+
+#[tauri::command]
+async fn download_upscale_model(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    model_id: String,
+) -> Result<Vec<vsr::UpscaleModelInfo>, String> {
+    let paths = engine_paths(&app);
+    let model = vsr::def(&model_id).ok_or_else(|| format!("Modelo desconocido: {model_id}"))?;
+    if state.vsr_download_in_progress.swap(true, Ordering::SeqCst) {
+        return Err(text(
+            &state,
+            "Ya hay una descarga de modelo en curso.",
+            "A model download is already in progress.",
+        ));
+    }
+    struct Guard(Arc<AtomicBool>);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::SeqCst);
+        }
+    }
+    let _guard = Guard(Arc::clone(&state.vsr_download_in_progress));
+    state.vsr_download_cancelled.store(false, Ordering::SeqCst);
+    let cancelled = Arc::clone(&state.vsr_download_cancelled);
+    let download_pid = Arc::clone(&state.vsr_download_pid);
+    let dir = whisper::models_dir(&paths);
+    let total_all = vsr::total_size(model);
+    let files: Vec<(String, String, u64, &'static str, u64)> = {
+        let mut done_before = 0u64;
+        model
+            .files
+            .iter()
+            .map(|f| {
+                let entry = (
+                    f.url.to_string(),
+                    dir.join(f.file).to_string_lossy().into_owned(),
+                    f.size,
+                    f.sha256,
+                    done_before,
+                );
+                done_before += f.size;
+                entry
+            })
+            .collect()
+    };
+    let app_progress = app.clone();
+    let progress_id = model_id.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        for (url, destination, size, sha256, offset) in &files {
+            let destination = PathBuf::from(destination);
+            if destination.exists() {
+                continue;
+            }
+            let app_progress = app_progress.clone();
+            let progress_id = progress_id.clone();
+            let offset = *offset;
+            whisper::download_url_cancellable(
+                url,
+                &destination,
+                Some(*size),
+                Some(sha256),
+                &|percent| {
+                    let overall = ((offset + (size * percent as u64) / 100) * 100 / total_all) as i32;
+                    let _ = app_progress.emit(
+                        "upscale-model-download-progress",
+                        json!({ "id": progress_id, "percent": overall }),
+                    );
+                },
+                Some(&download_pid),
+                Some(&cancelled),
+            )?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(vsr::list_models(&paths))
+}
+
+#[tauri::command]
+fn cancel_upscale_model_download(state: State<'_, AppState>) -> bool {
+    state.vsr_download_cancelled.store(true, Ordering::SeqCst);
+    whisper::kill_child(&state.vsr_download_pid);
+    true
 }
 
 #[tauri::command]
@@ -869,6 +982,11 @@ fn main() {
             compute_upscale_plan,
             start_upscale,
             cancel_upscale,
+            list_upscale_models,
+            set_upscale_engine,
+            delete_upscale_model,
+            download_upscale_model,
+            cancel_upscale_model_download,
             ffmpeg_status
         ])
         .run(tauri::generate_context!())

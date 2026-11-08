@@ -40,7 +40,9 @@
       "../build/whisper/whisper-cli": "whisper/whisper-cli",
       "../build/whisper/lib": "whisper/lib",
       "../build/nemo": "nemo",
-      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../build/sd/sd-cli": "sd/sd-cli",
+      "../build/sd/libstable-diffusion.dylib": "sd/libstable-diffusion.dylib"
     },
     "macOS": {
       "minimumSystemVersion": "13.4"

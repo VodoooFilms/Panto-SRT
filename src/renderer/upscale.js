@@ -43,7 +43,27 @@
       timeout: 'FFmpeg tardó demasiado. Prueba con un archivo más pequeño.',
       failed: 'No se pudo completar el escalado.',
       quality: 'H.264 · CRF 14',
-      footer: 'Procesado en tu equipo · sin subir nada'
+      footer: 'Procesado en tu equipo · sin subir nada',
+      models: 'Modelos',
+      modelsSubtitle: 'Elige el motor de escalado o libera espacio',
+      modelsFoot: 'Toca un modelo para usarlo. RelayVSR es IA generativa (2×/4× nativo) y tarda mucho más; Lanczos es instantáneo y sin descarga.',
+      modelActive: 'Activo',
+      modelReady: 'Listo',
+      modelMissing: 'Sin descargar',
+      modelDownloading: 'descargando…',
+      useModel: 'Usar este modelo',
+      downloadModel: 'Descargar modelo',
+      deleteModel: 'Borrar modelo',
+      deleteConfirm: (name) => `¿Borrar ${name}? Podrás descargarlo de nuevo cuando quieras.`,
+      stopDownload: 'Detener descarga',
+      close: 'Cerrar',
+      aiDetail: 'IA generativa · escala nativa',
+      scalingAi: 'Escalando con IA…',
+      scalingAiDetail: 'RelayVSR · puede tardar varios minutos',
+      modelMissingErr: 'Descarga el modelo RelayVSR desde Modelos.',
+      aiTooBig: 'RelayVSR en este equipo (16 GB) admite entradas de hasta 854×480; para 1080p usa Lanczos.',
+      sdMissing: 'No se encontró el motor de IA (sd-cli) en la app.',
+      sdFailed: 'El motor de IA falló.'
     },
     en: {
       selectAria: 'Select a video',
@@ -85,7 +105,27 @@
       timeout: 'FFmpeg took too long. Try a smaller file.',
       failed: 'The upscale could not be completed.',
       quality: 'H.264 · CRF 14',
-      footer: 'Processed on your device · nothing uploaded'
+      footer: 'Processed on your device · nothing uploaded',
+      models: 'Models',
+      modelsSubtitle: 'Choose the upscale engine or free up space',
+      modelsFoot: 'Tap a model to use it. RelayVSR is generative AI (native 2×/4×) and much slower; Lanczos is instant with no download.',
+      modelActive: 'Active',
+      modelReady: 'Ready',
+      modelMissing: 'Not downloaded',
+      modelDownloading: 'downloading…',
+      useModel: 'Use this model',
+      downloadModel: 'Download model',
+      deleteModel: 'Delete model',
+      deleteConfirm: (name) => `Delete ${name}? You can download it again anytime.`,
+      stopDownload: 'Stop download',
+      close: 'Close',
+      aiDetail: 'Generative AI · native scale',
+      scalingAi: 'AI upscaling…',
+      scalingAiDetail: 'RelayVSR · may take several minutes',
+      modelMissingErr: 'Download the RelayVSR model from Models.',
+      aiTooBig: 'RelayVSR on this machine (16 GB) accepts inputs up to 854×480; use Lanczos for 1080p.',
+      sdMissing: 'The AI engine (sd-cli) was not found in the app.',
+      sdFailed: 'The AI engine failed.'
     }
   };
 
@@ -133,8 +173,25 @@
     cancelRequested: false,
     result: null,
     planRequest: 0,
-    ffmpegAvailable: true
+    ffmpegAvailable: true,
+    engine: 'lanczos',
+    models: [],
+    downloading: {}
   };
+
+  function isRelay() {
+    return state.engine !== 'lanczos';
+  }
+
+  function activeModelInfo() {
+    return state.models.find((model) => model.id === state.engine) || null;
+  }
+
+  function engineReady() {
+    if (!isRelay()) return true;
+    const model = activeModelInfo();
+    return Boolean(model && model.downloaded);
+  }
 
   const copy = () => COPY[state.language];
   const t = (key) => copy()[key];
@@ -195,8 +252,14 @@
   function setStatusIdle() {
     statusPanel.className = 'status idle';
     statusIcon.textContent = '';
-    statusTitle.textContent = t('ready');
-    statusDetail.textContent = t('readyDetail');
+    if (isRelay()) {
+      const model = activeModelInfo();
+      statusTitle.textContent = model ? model.name : 'RelayVSR';
+      statusDetail.textContent = t('aiDetail');
+    } else {
+      statusTitle.textContent = t('ready');
+      statusDetail.textContent = t('readyDetail');
+    }
     statusRight.textContent = state.plan ? `≈ ${formatBytes(state.plan.estimatedBytes)}` : '';
     progressTrack.classList.add('hidden');
   }
@@ -213,8 +276,10 @@
   function setStatusProcessing(percent) {
     statusPanel.className = 'status processing';
     statusIcon.textContent = '';
-    statusTitle.textContent = t('scaling');
-    statusDetail.textContent = state.plan ? `${state.plan.label} · ${t('scalingDetail')}` : t('scalingDetail');
+    statusTitle.textContent = isRelay() ? t('scalingAi') : t('scaling');
+    statusDetail.textContent = isRelay()
+      ? t('scalingAiDetail')
+      : state.plan ? `${state.plan.label} · ${t('scalingDetail')}` : t('scalingDetail');
     statusRight.textContent = `${Math.round(percent)}%`;
     progressTrack.classList.remove('hidden');
     progressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
@@ -299,7 +364,7 @@
       $('upOutputName').textContent = `${fileStem(state.file.name)}_${plan.label.toLowerCase()}.mp4`;
       $('upOutputDimensions').textContent = `${plan.targetWidth} × ${plan.targetHeight}`;
       $('upOutputSize').textContent = plan.estimatedBytes ? `≈ ${formatBytes(plan.estimatedBytes)}` : '—';
-      $('upOutputDetail').textContent = `Lanczos · ${planBars(plan)}`;
+      $('upOutputDetail').textContent = `${isRelay() ? 'RelayVSR IA' : 'Lanczos'} · ${planBars(plan)}`;
       return;
     }
 
@@ -313,7 +378,7 @@
     $('upOutputName').textContent = '—';
     $('upOutputDimensions').textContent = '—';
     $('upOutputSize').textContent = '—';
-    $('upOutputDetail').textContent = `Lanczos · ${t('quality')}`;
+    $('upOutputDetail').textContent = `${isRelay() ? 'RelayVSR IA' : 'Lanczos'} · ${t('quality')}`;
   }
 
   function renderActions() {
@@ -326,7 +391,7 @@
     anotherButton.classList.toggle('hidden', !showResult);
     revealButton.classList.toggle('hidden', !showResult);
 
-    convertButton.disabled = !state.file || state.loading || !state.ffmpegAvailable;
+    convertButton.disabled = !state.file || state.loading || !state.ffmpegAvailable || !engineReady();
     convertButton.textContent = t('scaleTo')((state.plan && state.plan.label) || targetInfo().label);
     cancelButton.textContent = t('cancel');
     anotherButton.textContent = t('another');
@@ -464,6 +529,10 @@
     const raw = typeof error === 'string' ? error : (error && error.message) || '';
     let message;
     if (raw.startsWith('FFMPEG_MISSING')) message = t('ffmpegMissing');
+    else if (raw.startsWith('MODEL_MISSING')) message = t('modelMissingErr');
+    else if (raw.startsWith('AI_INPUT_TOO_BIG')) message = t('aiTooBig');
+    else if (raw.startsWith('SD_MISSING')) message = t('sdMissing');
+    else if (raw.startsWith('SD_FAILED:')) message = raw.slice('SD_FAILED:'.length).trim() || t('sdFailed');
     else if (raw.startsWith('UNSUPPORTED')) message = t('unsupported');
     else if (raw.startsWith('BUSY')) message = t('busy');
     else if (raw.startsWith('FFMPEG_TIMEOUT')) message = t('timeout');
@@ -488,7 +557,8 @@
         inputPath: state.file.path,
         targetId: state.target,
         mode: state.mode,
-        outputDirectory: state.outputDirectory
+        outputDirectory: state.outputDirectory,
+        engine: state.engine
       });
 
       state.converting = false;
@@ -576,10 +646,200 @@
     refreshPlan();
   }
 
+  const ENGINE_ICONS = {
+    lanczos: '<svg viewBox="0 0 20 20"><path d="M3 10h2l2-5 3 10 3-8 2 3h2"/></svg>',
+    relay: '<svg viewBox="0 0 20 20"><path d="M10 2l1.8 5.2L17 9l-5.2 1.8L10 16l-1.8-5.2L3 9l5.2-1.8Z"/></svg>'
+  };
+  const STOP_SVG = '<svg viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" rx="2"/></svg>';
+  const CHECK_SVG = '<svg viewBox="0 0 20 20"><path d="m4 10.5 4 4L16 6"/></svg>';
+  const TRASH_SVG = '<svg viewBox="0 0 20 20"><path d="M3 5h14M8 5V3.5A.5.5 0 0 1 8.5 3h3a.5.5 0 0 1 .5.5V5m3 0-.7 10a1.5 1.5 0 0 1-1.5 1.4H7.2A1.5 1.5 0 0 1 5.7 15L5 5m4 3.5v5M11 8.5v5"/></svg>';
+  const DOWNLOAD_SVG = '<svg viewBox="0 0 20 20"><path d="M10 3v10m0 0 4-4m-4 4L6 9M3.5 16.5h13"/></svg>';
+
+  function renderEngineBadge() {
+    const badge = $('upEngineBadge');
+    if (isRelay()) {
+      const model = activeModelInfo();
+      badge.textContent = model ? model.name : 'RelayVSR';
+      badge.title = model ? model.engineLabel : '';
+    } else {
+      badge.textContent = 'Lanczos';
+      badge.title = t('engineTitle');
+    }
+  }
+
+  function renderModels() {
+    const list = $('upModelsList');
+    if (!list) return;
+    list.textContent = '';
+    for (const model of state.models) {
+      const downloading = state.downloading[model.id];
+      const isDownloading = downloading !== undefined;
+      const row = document.createElement('div');
+      row.className = `model-row${model.active ? '' : ' inactive'}`;
+
+      const icon = document.createElement('div');
+      icon.className = 'model-icon';
+      icon.innerHTML = model.builtin ? ENGINE_ICONS.lanczos : ENGINE_ICONS.relay;
+
+      const modelCopy = document.createElement('div');
+      modelCopy.className = 'model-copy';
+      const name = document.createElement('strong');
+      name.textContent = model.name;
+      const detail = document.createElement('small');
+      detail.textContent = isDownloading
+        ? `${model.engineLabel} · ${t('modelDownloading')}`
+        : model.engineLabel;
+      modelCopy.append(name, detail);
+
+      const status = document.createElement('div');
+      status.className = 'model-status';
+      if (isDownloading) {
+        const pct = document.createElement('span');
+        pct.className = 'model-pct';
+        pct.textContent = `${downloading}% · ${formatBytes((model.size * downloading) / 100)} / ${formatBytes(model.size)}`;
+        const track = document.createElement('div');
+        track.className = 'mini-track';
+        const bar = document.createElement('div');
+        bar.style.width = `${downloading}%`;
+        track.append(bar);
+        status.append(pct, track);
+      } else {
+        const badge = document.createElement('span');
+        badge.className = `model-badge${model.active ? ' active' : ''}`;
+        badge.textContent = model.active ? t('modelActive') : model.downloaded ? t('modelReady') : t('modelMissing');
+        const size = document.createElement('span');
+        size.className = 'model-size';
+        size.textContent = model.builtin ? '—' : formatBytes(model.size);
+        status.append(badge, size);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'model-actions';
+      const slot = document.createElement('button');
+      if (!model.downloaded && !isDownloading) {
+        slot.innerHTML = DOWNLOAD_SVG;
+        slot.title = t('downloadModel');
+        slot.setAttribute('aria-label', t('downloadModel'));
+        slot.addEventListener('click', (event) => {
+          event.stopPropagation();
+          downloadModel(model);
+        });
+      } else {
+        slot.className = model.active ? 'check-slot' : 'check-slot empty';
+        slot.innerHTML = CHECK_SVG;
+        slot.title = model.active ? t('modelActive') : t('useModel');
+        slot.setAttribute('aria-label', slot.title);
+        if (isDownloading) slot.disabled = true;
+      }
+      actions.append(slot);
+      if (!model.builtin) {
+        const trash = document.createElement('button');
+        trash.className = 'danger';
+        trash.innerHTML = TRASH_SVG;
+        trash.title = t('deleteModel');
+        trash.setAttribute('aria-label', t('deleteModel'));
+        trash.disabled = !model.downloaded || isDownloading;
+        trash.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          if (!window.confirm(t('deleteConfirm')(model.name))) return;
+          try {
+            state.models = await window.pantoUpscale.deleteModel(model.id);
+            syncEngineFromModels();
+          } catch (error) {
+            handleError(error);
+          }
+        });
+        actions.append(trash);
+      }
+
+      if (isDownloading) {
+        const stop = document.createElement('button');
+        stop.className = 'stop-download';
+        stop.innerHTML = STOP_SVG;
+        stop.title = t('stopDownload');
+        stop.setAttribute('aria-label', t('stopDownload'));
+        stop.addEventListener('click', (event) => {
+          event.stopPropagation();
+          window.pantoUpscale.cancelModelDownload();
+        });
+        row.append(icon, modelCopy, stop, status, actions);
+      } else {
+        row.append(icon, modelCopy, status, actions);
+      }
+      row.addEventListener('click', async () => {
+        if (!model.downloaded || model.active || isDownloading) return;
+        try {
+          state.models = await window.pantoUpscale.setEngine(model.id);
+          syncEngineFromModels();
+        } catch (error) {
+          handleError(error);
+        }
+      });
+      list.append(row);
+    }
+  }
+
+  function syncEngineFromModels() {
+    const active = state.models.find((model) => model.active);
+    state.engine = active ? active.id : 'lanczos';
+    state.result = null;
+    tab.classList.remove('is-complete');
+    renderEngineBadge();
+    renderModels();
+    renderOutput();
+    renderActions();
+    if (!state.converting) setStatusIdle();
+  }
+
+  async function loadModels() {
+    try {
+      state.models = await window.pantoUpscale.listModels();
+      const active = state.models.find((model) => model.active);
+      state.engine = active ? active.id : 'lanczos';
+      renderEngineBadge();
+      renderModels();
+      renderOutput();
+      renderActions();
+      if (!state.converting && !state.result) setStatusIdle();
+    } catch (_) {
+      // Panel stays empty until the backend answers.
+    }
+  }
+
+  async function downloadModel(model) {
+    state.downloading[model.id] = 0;
+    renderModels();
+    try {
+      state.models = await window.pantoUpscale.downloadModel(model.id);
+      syncEngineFromModels();
+    } catch (error) {
+      const raw = typeof error === 'string' ? error : (error && error.message) || '';
+      if (raw !== 'cancelled') handleError(error);
+    } finally {
+      delete state.downloading[model.id];
+      renderModels();
+      renderActions();
+    }
+  }
+
+  function setModelsView(open) {
+    $('upModelsPanel').classList.toggle('hidden', !open);
+    if (open) loadModels();
+  }
+
   function applyLanguage(language) {
     if (!COPY[language]) return;
     state.language = language;
-    $('upEngineBadge').title = t('engineTitle');
+    $('upModelsToggle').textContent = t('models');
+    $('upModelsToggle').setAttribute('aria-label', t('models'));
+    $('upModelsToggle').title = t('models');
+    $('upModelsTitle').textContent = t('models');
+    $('upModelsSubtitle').textContent = t('modelsSubtitle');
+    $('upModelsFoot').textContent = t('modelsFoot');
+    $('upModelsClose').setAttribute('aria-label', t('close'));
+    $('upModelsClose').title = t('close');
+    renderEngineBadge();
+    renderModels();
     $('upFooterNote').textContent = t('footer');
     $('upInputKicker').textContent = t('input');
     $('upOutputKicker').textContent = t('output');
@@ -642,6 +902,16 @@
         cancel();
       }
     });
+    $('upModelsToggle').addEventListener('click', () => {
+      setModelsView($('upModelsPanel').classList.contains('hidden'));
+    });
+    $('upModelsClose').addEventListener('click', () => setModelsView(false));
+    window.pantoUpscale.onModelDownloadProgress((payload) => {
+      if (state.downloading[payload.id] !== undefined) {
+        state.downloading[payload.id] = payload.percent;
+        renderModels();
+      }
+    });
     window.pantoUpscale.onProgress(({ percent }) => {
       if (!state.converting) return;
       const value = Number(percent);
@@ -657,6 +927,7 @@
     renderFolderButton();
     renderActions();
     setStatusIdle();
+    loadModels();
     window.pantoUpscale.status()
       .then((status) => {
         if (!status || !status.available) {

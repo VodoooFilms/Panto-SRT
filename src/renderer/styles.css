@@ -215,7 +215,7 @@ button { font: inherit; }
   height: 22px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 8px;
 }
 .sub-toolbar { justify-content: space-between; }
