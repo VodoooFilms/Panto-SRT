@@ -222,23 +222,25 @@ button { font: inherit; }
 /* Convertir sub-tabs */
 .converter-tabs {
   flex: none;
-  align-self: flex-end;
-  padding: 2px;
+  align-self: stretch;
+  padding: 3px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   gap: 2px;
   background: var(--segment);
 }
 .converter-tab {
-  height: 24px;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 30px;
   padding: 0 10px;
   border: 0;
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--muted);
   background: transparent;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
@@ -378,13 +380,13 @@ button { font: inherit; }
 .file-card.has-thumbnail .file-copy small { color: rgba(255, 255, 255, .85); text-shadow: 0 1px 5px rgba(0, 0, 0, .7); }
 
 .icon-button {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  border: 0;
-  border-radius: 5px;
+  border: 1px solid var(--line-dark);
+  border-radius: 7px;
   color: var(--muted);
-  background: transparent;
+  background: var(--surface);
   font-size: 19px;
   line-height: 22px;
   cursor: pointer;
@@ -713,15 +715,15 @@ button { font: inherit; }
   position: absolute;
   top: 6px;
   right: 6px;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  border: 0;
-  border-radius: 5px;
+  border: 1px solid var(--line-dark);
+  border-radius: 7px;
   display: grid;
   place-items: center;
   color: var(--muted);
-  background: transparent;
+  background: var(--surface);
   font-size: 18px;
   line-height: 20px;
   cursor: pointer;
@@ -984,17 +986,18 @@ button { font: inherit; }
 .stop-download svg { width: 11px; height: 11px; fill: currentColor; }
 
 .models-toggle {
-  height: 22px;
-  padding: 0 2px;
-  border: 0;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--line-dark);
+  border-radius: 7px;
   color: var(--accent);
-  background: transparent;
+  background: var(--surface);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: .02em;
   cursor: pointer;
 }
-.models-toggle:hover { color: var(--text); }
+.models-toggle:hover { color: var(--text); background: var(--hover); }
 .models-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* Output location modal */
