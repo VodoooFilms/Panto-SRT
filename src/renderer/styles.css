@@ -1,29 +1,31 @@
 :root {
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
-  --background: #1d1d1f;
-  --surface: #272729;
-  --surface-raised: #2c2c2e;
-  --text: #ededed;
-  --muted: #929296;
-  --line: #3a3a3d;
-  --line-dark: #48484b;
-  --hover: #303033;
-  --segment: #151516;
-  --segment-active: #3a3a3d;
-  --button: #eeeeee;
-  --button-hover: #ffffff;
-  --button-text: #202020;
-  --button-disabled: #333336;
-  --button-disabled-text: #68686c;
-  --progress: #d2d2d2;
-  --progress-track: #424245;
+  /* Dark look — soft black with violet tint (Panto Studio redesign) */
+  --background: #19171f;
+  --shell-background: rgba(25, 23, 31, .94);
+  --surface: #211e29;
+  --surface-raised: #211e29;
+  --text: #f5f2fa;
+  --muted: #aaa3b5;
+  --line: #40394d;
+  --line-dark: #4a425e;
+  --hover: #2a2635;
+  --segment: #15131b;
+  --segment-active: #352b43;
+  --button: #352b43;
+  --button-hover: #40394d;
+  --button-text: #f5f2fa;
+  --button-disabled: #262130;
+  --button-disabled-text: #777080;
+  --progress: #b794f4;
+  --progress-track: #40394d;
   --success: #78b888;
-  --accent: #76b7ff;
-  --accent-soft: rgba(118, 183, 255, .12);
-  --brand: #a78bfa;
-  --action: #39205e;
-  --action-hover: #4a2a7a;
+  --accent: #b794f4;
+  --accent-soft: rgba(183, 148, 244, .12);
+  --brand: #b794f4;
+  --action: #54218a;
+  --action-hover: #6930a4;
   --error: #e38a8a;
   --error-background: #2b2425;
   --shadow: rgba(0, 0, 0, .35);
@@ -54,7 +56,7 @@
   --accent-soft: rgba(120, 86, 232, .12);
   --brand: #7856e8;
   --action: #422064;
-  --action-hover: #241336;
+  --action-hover: #54218a;
   --error: #c04a4a;
   --error-background: #fdf2f2;
   --shadow: rgba(36, 19, 54, .10);
@@ -63,6 +65,8 @@
 * { box-sizing: border-box; }
 
 html, body { height: 100%; }
+
+:root:not([data-theme="light"]) body { background: transparent; }
 
 body {
   margin: 0;
@@ -93,6 +97,17 @@ button { font: inherit; }
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Frosted glass (dark only): translucent shell + blur over a transparent
+   native window; inner cards/tabs stay solid for legibility. */
+:root:not([data-theme="light"]) .shell {
+  background: var(--shell-background);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .masthead {
@@ -859,8 +874,7 @@ button { font: inherit; }
   background: var(--action);
 }
 .actions button:hover:not(:disabled) { border-color: var(--action-hover); background: var(--action-hover); }
-.actions button:disabled { border-color: #2c1847; color: rgba(255, 255, 255, .45); background: #2c1847; cursor: default; }
-:root[data-theme="light"] .actions button:disabled { border-color: #ddd5f0; color: #a79db8; background: #e7e2f5; }
+.actions button:disabled { border-color: var(--button-disabled); color: var(--button-disabled-text); background: var(--button-disabled); cursor: default; }
 .primary {
   border: 1px solid var(--action);
   color: #ffffff;
@@ -877,6 +891,12 @@ button { font: inherit; }
 .success { background: var(--action); }
 /* Light look: selection ring + focus in soft violet (#A78BFA). */
 :root[data-theme="light"] .profile.active { box-shadow: inset 0 0 0 1px #a78bfa, 0 1px 2px var(--shadow); }
+:root:not([data-theme="light"]) .profile.active,
+:root:not([data-theme="light"]) .studio-tab.active,
+:root:not([data-theme="light"]) .converter-tab.active,
+:root:not([data-theme="light"]) .segmented button.active {
+  box-shadow: inset 0 0 0 1px rgba(143, 112, 181, .55), 0 1px 2px var(--shadow);
+}
 :root[data-theme="light"] :focus-visible { outline-color: #a78bfa; }
 .primary:focus-visible,
 .secondary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
