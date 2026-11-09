@@ -22,6 +22,8 @@
   --accent: #76b7ff;
   --accent-soft: rgba(118, 183, 255, .12);
   --brand: #a78bfa;
+  --action: #39205e;
+  --action-hover: #4a2a7a;
   --error: #e38a8a;
   --error-background: #2b2425;
   --shadow: rgba(0, 0, 0, .35);
@@ -29,30 +31,33 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --background: #f4f4f4;
+  /* Light look — lavender tokens */
+  --background: #f7f6fc;
   --surface: #ffffff;
-  --surface-raised: #f8fbff;
-  --text: #202020;
-  --muted: #68686d;
-  --line: #d9d9d9;
-  --line-dark: #c7c7c7;
-  --hover: #ebebeb;
-  --segment: #e9e9e9;
+  --surface-raised: #ffffff;
+  --text: #241336;
+  --muted: #81788e;
+  --line: #ddd5f0;
+  --line-dark: #cfc4ea;
+  --hover: #eeebf7;
+  --segment: #eeebf7;
   --segment-active: #ffffff;
-  --button: #6b5bd8;
-  --button-hover: #5c4cc9;
+  --button: #422064;
+  --button-hover: #241336;
   --button-text: #ffffff;
-  --button-disabled: #e0e0e0;
-  --button-disabled-text: #a0a0a5;
-  --progress: #6b5bd8;
-  --progress-track: #d9d9d9;
+  --button-disabled: #e7e2f5;
+  --button-disabled-text: #a79db8;
+  --progress: #7856e8;
+  --progress-track: #ddd5f0;
   --success: #3f9b5c;
-  --accent: #6b5bd8;
-  --accent-soft: rgba(107, 91, 216, .12);
-  --brand: #8b5cf6;
+  --accent: #7856e8;
+  --accent-soft: rgba(120, 86, 232, .12);
+  --brand: #7856e8;
+  --action: #422064;
+  --action-hover: #241336;
   --error: #c04a4a;
   --error-background: #fdf2f2;
-  --shadow: rgba(0, 0, 0, .12);
+  --shadow: rgba(36, 19, 54, .10);
 }
 
 * { box-sizing: border-box; }
@@ -849,18 +854,19 @@ button { font: inherit; }
 .actions .secondary:not(.hidden) { flex: 1; }
 /* Bottom action bar: every action button is brand purple with white text. */
 .actions button {
-  border: 1px solid #39205e;
+  border: 1px solid var(--action);
   color: #ffffff;
-  background: #39205e;
+  background: var(--action);
 }
-.actions button:hover:not(:disabled) { border-color: #4a2a7a; background: #4a2a7a; }
+.actions button:hover:not(:disabled) { border-color: var(--action-hover); background: var(--action-hover); }
 .actions button:disabled { border-color: #2c1847; color: rgba(255, 255, 255, .45); background: #2c1847; cursor: default; }
+:root[data-theme="light"] .actions button:disabled { border-color: #ddd5f0; color: #a79db8; background: #e7e2f5; }
 .primary {
-  border: 1px solid #39205e;
+  border: 1px solid var(--action);
   color: #ffffff;
-  background: #39205e;
+  background: var(--action);
 }
-.primary:hover:not(:disabled) { border-color: #4a2a7a; background: #4a2a7a; }
+.primary:hover:not(:disabled) { border-color: var(--action-hover); background: var(--action-hover); }
 .primary:disabled { border-color: var(--button-disabled); color: var(--button-disabled-text); background: var(--button-disabled); cursor: default; }
 .secondary {
   border: 1px solid var(--line-dark);
@@ -868,7 +874,10 @@ button { font: inherit; }
   background: var(--surface);
 }
 .secondary:hover { background: var(--hover); }
-.success { background: var(--button); }
+.success { background: var(--action); }
+/* Light look: selection ring + focus in soft violet (#A78BFA). */
+:root[data-theme="light"] .profile.active { box-shadow: inset 0 0 0 1px #a78bfa, 0 1px 2px var(--shadow); }
+:root[data-theme="light"] :focus-visible { outline-color: #a78bfa; }
 .primary:focus-visible,
 .secondary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
