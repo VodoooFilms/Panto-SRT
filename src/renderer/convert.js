@@ -27,6 +27,8 @@
       finishing: 'Finalizando…',
       smaller: 'más pequeño',
       failed: 'La conversión no pudo completarse.',
+      folder: 'Elegir carpeta de salida',
+      folderChange: 'clic para cambiar · clic derecho para quitar',
       outputTitle: '¿Dónde guardar las conversiones?',
       outputDetail: 'Puedes guardarlas junto a los originales o elegir otra carpeta.',
       outputSame: 'Misma carpeta',
@@ -96,6 +98,8 @@
       finishing: 'Finishing…',
       smaller: 'smaller',
       failed: 'The conversion could not be completed.',
+      folder: 'Choose output folder',
+      folderChange: 'click to change · right-click to clear',
       outputTitle: 'Where should conversions be saved?',
       outputDetail: 'Save them next to the originals or choose another folder.',
       outputSame: 'Same folder',
@@ -165,8 +169,15 @@
     activeIndex: 0,
     completedCount: 0,
     outputPath: null,
-    outputPaths: []
+    outputPaths: [],
+    outputDirectories: {}
   };
+
+  const FOLDER_SVG = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 5.5a1.5 1.5 0 0 1 1.5-1.5h3.2l1.6 1.8H16a1.5 1.5 0 0 1 1.5 1.5v7.2A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5Z"></path></svg>';
+
+  function outputKey() {
+    return `${state.converter}:${state.profile}`;
+  }
 
   let modalResolve = null;
 
@@ -256,7 +267,28 @@
       const estimateValue = document.createElement('strong');
       estimateValue.textContent = state.file ? `≈ ${formatBytes(estimatedBytes(profile.id))}` : '—';
       estimate.append(estimateLabel, estimateValue);
-      button.append(name, detail, estimate);
+
+      const customFolder = state.outputDirectories[`${state.converter}:${profile.id}`];
+      const folderButton = document.createElement('span');
+      folderButton.className = `card-action folder-action profile-folder${customFolder ? ' custom' : ''}`;
+      folderButton.innerHTML = FOLDER_SVG;
+      folderButton.setAttribute('role', 'button');
+      folderButton.setAttribute('aria-label', copy().folder);
+      folderButton.title = customFolder
+        ? `${customFolder} · ${copy().folderChange}`
+        : copy().folder;
+      folderButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        pickProfileFolder(profile.id);
+      });
+      folderButton.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        delete state.outputDirectories[`${state.converter}:${profile.id}`];
+        renderProfiles();
+      });
+
+      button.append(name, detail, estimate, folderButton);
       profileGrid.append(button);
     }
     profileGrid.style.setProperty('--profile-count', currentConverter().profiles.length);
@@ -414,6 +446,21 @@
     }
   }
 
+  async function pickProfileFolder(profileId) {
+    if (state.converting) return;
+    state.profile = profileId;
+    renderProfiles();
+    try {
+      const folder = await window.pantoConvert.chooseFolder();
+      if (folder) {
+        state.outputDirectories[`${state.converter}:${profileId}`] = folder;
+        renderProfiles();
+      }
+    } catch (error) {
+      setError((error && error.message) || copy().failed);
+    }
+  }
+
   function chooseOutputLocation() {
     return new Promise((resolve) => {
       modalResolve = resolve;
@@ -444,7 +491,10 @@
 
   async function convert() {
     if (!state.file || state.converting) return;
-    const destination = await chooseOutputLocation();
+    const customFolder = state.outputDirectories[outputKey()];
+    const destination = customFolder
+      ? { canceled: false, path: customFolder }
+      : await chooseOutputLocation();
     if (destination.canceled) return;
 
     state.converting = true;
