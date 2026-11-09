@@ -43,7 +43,6 @@
       timeout: 'FFmpeg tardó demasiado. Prueba con un archivo más pequeño.',
       failed: 'No se pudo completar el escalado.',
       quality: 'H.264 · CRF 14',
-      footer: 'Procesado en tu equipo · sin subir nada',
       models: 'Modelos',
       modelsSubtitle: 'Elige el motor de escalado o libera espacio',
       modelsFoot: 'Los motores de IA ya vienen con la app (1,2 MB). Real-ESRGAN está hecho para animación y video; Lanczos es instantáneo pero solo redimensiona.',
@@ -100,7 +99,6 @@
       timeout: 'FFmpeg took too long. Try a smaller file.',
       failed: 'The upscale could not be completed.',
       quality: 'H.264 · CRF 14',
-      footer: 'Processed on your device · nothing uploaded',
       models: 'Models',
       modelsSubtitle: 'Choose the upscale engine or free up space',
       modelsFoot: 'AI engines ship inside the app (1.2 MB). Real-ESRGAN is made for animation and video; Lanczos is instant but only resizes.',
@@ -672,7 +670,10 @@
   const CHECK_SVG = '<svg viewBox="0 0 20 20"><path d="m4 10.5 4 4L16 6"/></svg>';
 
   function renderEngineBadge() {
+    // The badge element was removed in the mockup layout: the status bar
+    // title already names the active engine.
     const badge = $('upEngineBadge');
+    if (!badge) return;
     if (isAi()) {
       const model = activeModelInfo();
       badge.textContent = model ? model.name : 'Real-ESRGAN';
@@ -782,7 +783,6 @@
     $('upModelsClose').title = t('close');
     renderEngineBadge();
     renderModels();
-    $('upFooterNote').textContent = t('footer');
     $('upInputKicker').textContent = t('input');
     $('upOutputKicker').textContent = t('output');
     $('upDropTitle').textContent = t('dropTitle');

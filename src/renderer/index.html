@@ -114,11 +114,6 @@
     <!-- Upscale -->
     <section class="tab-view hidden" id="tab-upscale" role="tabpanel" aria-label="Upscale">
       <div class="tab-scroll">
-        <div class="tab-toolbar">
-          <span class="engine-badge" id="upEngineBadge" title="Escalador Lanczos">Lanczos</span>
-          <button class="models-toggle" id="upModelsToggle" aria-label="Modelos" title="Modelos">Modelos</button>
-        </div>
-
         <section class="media-card input-card" id="upInputCard" tabindex="0" role="button" aria-label="Seleccionar un vídeo">
           <div class="preview">
             <div class="preview-empty" id="upInputEmpty">
@@ -156,6 +151,16 @@
           </div>
         </section>
 
+        <section class="settings mode-settings" aria-label="Ajuste de imagen">
+          <div class="setting-row">
+            <div class="segmented" id="upModeGroup" role="group" aria-label="Ajuste de imagen">
+              <button type="button" data-mode="pad">Barras negras</button>
+              <button type="button" data-mode="crop" class="active">Recortar</button>
+              <button type="button" data-mode="stretch">Estirar</button>
+            </div>
+          </div>
+        </section>
+
         <section class="media-card output-card" id="upOutputCard" aria-live="polite">
           <div class="preview output-preview">
             <div class="preview-empty output-empty" id="upOutputEmpty">
@@ -182,27 +187,17 @@
           </button>
         </section>
 
-        <section class="settings mode-settings" aria-label="Ajuste de imagen">
-          <div class="setting-row">
-            <div class="segmented" id="upModeGroup" role="group" aria-label="Ajuste de imagen">
-              <button type="button" data-mode="pad">Barras negras</button>
-              <button type="button" data-mode="crop" class="active">Recortar</button>
-              <button type="button" data-mode="stretch">Estirar</button>
-            </div>
-          </div>
-        </section>
-
         <section class="status" id="upStatusPanel" aria-live="polite">
           <div class="status-row">
             <span class="status-icon" id="upStatusIcon"></span>
             <strong class="status-title" id="upStatusTitle">Lanczos</strong>
             <span class="status-detail" id="upStatusDetail">Escalado de alta calidad</span>
             <span class="status-right" id="upStatusRight"></span>
+            <button class="models-toggle" id="upModelsToggle" aria-label="Modelos" title="Modelos">Modelos</button>
           </div>
           <div class="track hidden" id="upProgressTrack"><div id="upProgressBar"></div></div>
         </section>
 
-        <p class="footer-note" id="upFooterNote">Procesado en tu equipo · sin subir nada</p>
       </div>
 
       <div class="actions">
