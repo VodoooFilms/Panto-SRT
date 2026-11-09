@@ -76,6 +76,10 @@ button { font: inherit; }
   inset: 0 0 auto;
   height: 40px;
   z-index: 10;
+  /* Clicks must reach the header controls below this strip (theme/language
+     toggles live in the top row now); window dragging is handled by the
+     masthead pointerdown handler in app.js. */
+  pointer-events: none;
 }
 
 .shell {
@@ -713,8 +717,8 @@ button { font: inherit; }
 
 .card-action {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 10px;
+  right: 10px;
   width: 26px;
   height: 26px;
   padding: 0;
