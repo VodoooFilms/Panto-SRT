@@ -12,31 +12,28 @@
 
   <main class="shell">
     <header class="masthead" data-tauri-drag-region>
-      <span class="brand">
-        <svg class="brand-mark" viewBox="0 0 20 20" aria-hidden="true">
-          <rect x="1.5" y="2.5" width="11" height="6" rx="1.6"></rect>
-          <rect x="7.5" y="11.5" width="11" height="6" rx="1.6"></rect>
-          <path d="M8.5 7v5.2M6.6 10.6 8.5 12.5l1.9-1.9"></path>
-        </svg>
-        <span>Panto <em>Studio</em></span>
-      </span>
+      <div class="masthead-top">
+        <span class="brand">
+          <span>Panto <em>Studio</em></span>
+        </span>
+
+        <button class="theme-toggle" id="themeToggle" aria-label="Cambiar a modo claro" title="Cambiar a modo claro">
+          <svg class="sun-icon" viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="10" cy="10" r="3.2"></circle>
+            <path d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.3 4.3l1.1 1.1M14.6 14.6l1.1 1.1M15.7 4.3l-1.1 1.1M5.4 14.6l-1.1 1.1"></path>
+          </svg>
+          <svg class="moon-icon" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M16.2 12.8A6.7 6.7 0 0 1 7.2 3.8a6.7 6.7 0 1 0 9 9Z"></path>
+          </svg>
+        </button>
+        <button class="language-toggle" id="languageToggle" aria-label="Cambiar a inglés" title="Cambiar a inglés">ES</button>
+      </div>
 
       <nav class="studio-tabs" role="tablist" aria-label="Secciones">
         <button class="studio-tab active" data-tab="convert" role="tab" aria-selected="true">Convertir</button>
         <button class="studio-tab" data-tab="upscale" role="tab" aria-selected="false" tabindex="-1">Upscale</button>
         <button class="studio-tab" data-tab="subtitles" role="tab" aria-selected="false" tabindex="-1">Subtítulos</button>
       </nav>
-
-      <button class="theme-toggle" id="themeToggle" aria-label="Cambiar a modo claro" title="Cambiar a modo claro">
-        <svg class="sun-icon" viewBox="0 0 20 20" aria-hidden="true">
-          <circle cx="10" cy="10" r="3.2"></circle>
-          <path d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.3 4.3l1.1 1.1M14.6 14.6l1.1 1.1M15.7 4.3l-1.1 1.1M5.4 14.6l-1.1 1.1"></path>
-        </svg>
-        <svg class="moon-icon" viewBox="0 0 20 20" aria-hidden="true">
-          <path d="M16.2 12.8A6.7 6.7 0 0 1 7.2 3.8a6.7 6.7 0 1 0 9 9Z"></path>
-        </svg>
-      </button>
-      <button class="language-toggle" id="languageToggle" aria-label="Cambiar a inglés" title="Cambiar a inglés">ES</button>
     </header>
 
     <!-- Convertir -->

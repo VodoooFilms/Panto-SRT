@@ -80,17 +80,16 @@ button { font: inherit; }
 
 .shell {
   height: 100vh;
-  padding: 46px 18px 16px;
+  padding: 10px 18px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
 .masthead {
-  height: 26px;
   flex: none;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
   color: var(--muted);
   font-size: 11px;
@@ -98,50 +97,48 @@ button { font: inherit; }
   letter-spacing: .01em;
 }
 
+/* Top row: brand next to the window controls, settings on the right. */
+.masthead-top {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 64px;
+}
+.masthead-top .theme-toggle { margin-left: auto; }
+
 .brand {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--brand);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .brand em { font-style: normal; opacity: .72; }
 
-.brand-mark {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.35;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.brand-mark rect { fill: currentColor; stroke: none; opacity: .28; }
-.brand-mark rect:first-child { opacity: .5; }
 
 .studio-tabs {
-  margin-left: auto;
-  padding: 2px;
-  border-radius: 7px;
+  width: 100%;
+  padding: 3px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
   background: var(--segment);
 }
 
 .studio-tab {
-  width: 90px;
-  flex: none;
-  padding: 4px 0;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 7px 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--muted);
   background: transparent;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   text-align: center;
   white-space: nowrap;
