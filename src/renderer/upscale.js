@@ -7,7 +7,6 @@
       selectAria: 'Seleccionar un vídeo',
       dropTitle: 'Arrastra un vídeo',
       dropHint: 'o haz clic para abrir',
-      formats: 'MP4 · MOV · MKV · WEBM · AVI',
       input: 'Entrada',
       output: 'Salida',
       noFile: 'Sin archivo',
@@ -23,10 +22,6 @@
       scalingDetail: 'Lanczos · precisión de color completa',
       done: 'Listo',
       error: 'Error',
-      bars: 'barras',
-      crop: 'recorte',
-      noBars: 'sin barras',
-      noCrop: 'sin recorte',
       larger: 'más grande',
       smaller: 'más pequeño',
       similar: 'similar',
@@ -42,7 +37,6 @@
       busy: 'Ya hay una conversión en curso.',
       timeout: 'FFmpeg tardó demasiado. Prueba con un archivo más pequeño.',
       failed: 'No se pudo completar el escalado.',
-      quality: 'H.264 · CRF 14',
       models: 'Modelos',
       modelsSubtitle: 'Elige el motor de escalado o libera espacio',
       modelsFoot: 'Los motores de IA ya vienen con la app (1,2 MB). Real-ESRGAN está hecho para animación y video; Lanczos es instantáneo pero solo redimensiona.',
@@ -79,10 +73,6 @@
       scalingDetail: 'Lanczos · full chroma precision',
       done: 'Done',
       error: 'Error',
-      bars: 'bars',
-      crop: 'crop',
-      noBars: 'no bars',
-      noCrop: 'no crop',
       larger: 'larger',
       smaller: 'smaller',
       similar: 'similar',
@@ -216,38 +206,10 @@
     return `${megabytes < 1 ? megabytes.toFixed(2) : megabytes.toFixed(1)} MB`;
   }
 
-  function formatDuration(seconds) {
-    if (!Number.isFinite(seconds) || seconds <= 0) return '';
-    const total = Math.round(seconds);
-    const hours = Math.floor(total / 3600);
-    const minutes = Math.floor((total % 3600) / 60);
-    const remaining = total % 60;
-    if (hours) return `${hours}:${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`;
-    return `${minutes}:${String(remaining).padStart(2, '0')}`;
-  }
 
-  function formatFps(fps) {
-    if (!Number.isFinite(fps) || fps <= 0) return '';
-    return Number.isInteger(fps) ? `${fps}` : fps.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-  }
 
   function fileStem(name) {
     return name.replace(/\.[^.]+$/, '');
-  }
-
-  function planBars(plan) {
-    if (!plan) return '';
-    if (plan.mode === 'crop') {
-      if (plan.cropLeft && plan.cropTop) return `${t('crop')} ${plan.cropLeft}×${plan.cropTop} px`;
-      if (plan.cropLeft) return `${t('crop')} ${plan.cropLeft} px`;
-      if (plan.cropTop) return `${t('crop')} ${plan.cropTop} px`;
-      return t('noCrop');
-    }
-    if (plan.mode === 'stretch') return t('noBars');
-    if (plan.barLeft && plan.barTop) return `${t('bars')} ${plan.barLeft}×${plan.barTop} px`;
-    if (plan.barLeft) return `${t('bars')} ${plan.barLeft} px`;
-    if (plan.barTop) return `${t('bars')} ${plan.barTop} px`;
-    return t('noBars');
   }
 
   function sizeDelta(result) {
@@ -333,19 +295,11 @@
 
       $('upInputName').textContent = file.name;
       $('upInputDimensions').textContent = file.width ? `${file.width} × ${file.height}` : '—';
-      $('upInputSize').textContent = formatBytes(file.size);
-      $('upInputDetail').textContent = [
-        file.codec ? file.codec.toUpperCase() : '',
-        file.fps ? `${formatFps(file.fps)} fps` : '',
-        formatDuration(file.duration)
-      ].filter(Boolean).join(' · ');
       inputBadge.textContent = `${file.width} × ${file.height}`;
     } else {
       inputThumb.removeAttribute('src');
       $('upInputName').textContent = t('noFile');
       $('upInputDimensions').textContent = '—';
-      $('upInputSize').textContent = '—';
-      $('upInputDetail').textContent = t('formats');
       inputBadge.textContent = '';
     }
   }
@@ -362,8 +316,6 @@
       outputBadge.textContent = `${result.plan.targetWidth} × ${result.plan.targetHeight}`;
       $('upOutputName').textContent = result.outputName;
       $('upOutputDimensions').textContent = `${result.plan.targetWidth} × ${result.plan.targetHeight}`;
-      $('upOutputSize').textContent = formatBytes(result.outputBytes);
-      $('upOutputDetail').textContent = `H.264 · ${planBars(result.plan)}`;
       return;
     }
 
@@ -376,8 +328,6 @@
 
       $('upOutputName').textContent = `${fileStem(state.file.name)}_${plan.label.toLowerCase()}.mp4`;
       $('upOutputDimensions').textContent = `${plan.targetWidth} × ${plan.targetHeight}`;
-      $('upOutputSize').textContent = plan.estimatedBytes ? `≈ ${formatBytes(plan.estimatedBytes)}` : '—';
-      $('upOutputDetail').textContent = `${isAi() ? 'Real-ESRGAN IA' : 'Lanczos'} · ${planBars(plan)}`;
       return;
     }
 
@@ -390,8 +340,6 @@
     $('upOutputTargetDims').textContent = `${target.width} × ${target.height}`;
     $('upOutputName').textContent = '—';
     $('upOutputDimensions').textContent = '—';
-    $('upOutputSize').textContent = '—';
-    $('upOutputDetail').textContent = `${isAi() ? 'Real-ESRGAN IA' : 'Lanczos'} · ${t('quality')}`;
   }
 
   function renderActions() {
