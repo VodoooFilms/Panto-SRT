@@ -996,6 +996,8 @@ button { font: inherit; }
 .model-actions button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .model-actions button.danger:hover { color: var(--error); }
 .model-actions button:disabled { color: var(--button-disabled-text); cursor: default; }
+.model-actions button.not-downloaded { opacity: .45; }
+.model-actions button.not-downloaded:hover { opacity: .8; color: var(--error); }
 .model-actions button:disabled:hover { color: var(--button-disabled-text); background: transparent; }
 .check-slot { color: var(--success); cursor: default; }
 .check-slot:hover { color: var(--success); background: transparent; }

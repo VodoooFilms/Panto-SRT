@@ -34,6 +34,7 @@
       deleteModel: 'Borrar modelo',
       deleteTitle: 'Borrar modelo',
       deleteAction: 'Borrar',
+      deleteMissing: (name) => `${name} no está descargado; no hay nada que borrar.`,
       deleteConfirm: (name) => `¿Borrar ${name}? Podrás descargarlo de nuevo cuando quieras.`,
       stopDownload: 'Detener descarga',
       unsupported: 'Formato no compatible.',
@@ -72,6 +73,7 @@
       deleteModel: 'Delete model',
       deleteTitle: 'Delete model',
       deleteAction: 'Delete',
+      deleteMissing: (name) => `${name} is not downloaded; there is nothing to delete.`,
       deleteConfirm: (name) => `Delete ${name}? You can download it again anytime.`,
       stopDownload: 'Stop download',
       unsupported: 'Format not supported.',
@@ -216,7 +218,10 @@
       trash.innerHTML = TRASH_SVG;
       trash.title = u('deleteModel');
       trash.setAttribute('aria-label', u('deleteModel'));
-      trash.disabled = !model.downloaded || isDownloading;
+      // Never a dead button: when the model is not downloaded the click
+      // explains why there is nothing to delete (see askDeleteModel).
+      trash.disabled = isDownloading;
+      trash.classList.toggle('not-downloaded', !model.downloaded);
       trash.addEventListener('click', async (event) => {
         event.stopPropagation();
         askDeleteModel(model);
@@ -253,11 +258,15 @@
   // NOTE: window.confirm() is not implemented by Tauri's WKWebView and
   // silently returns false, so deletion is confirmed with an in-app modal.
   function askDeleteModel(model) {
-    if (!model.downloaded || state.deleting) return;
+    if (state.deleting) return;
     state.pendingDelete = model;
-    $('stDeleteDetail').textContent = u('deleteConfirm', model.name);
+    const downloaded = Boolean(model.downloaded);
+    $('stDeleteDetail').textContent = downloaded
+      ? u('deleteConfirm', model.name)
+      : u('deleteMissing', model.name);
+    $('stDeleteConfirm').classList.toggle('hidden', !downloaded);
     $('stDeleteModal').classList.remove('hidden');
-    $('stDeleteConfirm').focus();
+    (downloaded ? $('stDeleteConfirm') : $('stDeleteCancel')).focus();
   }
 
   function closeDeleteModal() {
@@ -267,7 +276,7 @@
 
   async function confirmDeleteModel() {
     const model = state.pendingDelete;
-    if (!model || state.deleting) return;
+    if (!model || !model.downloaded || state.deleting) return;
     state.deleting = true;
     $('stDeleteConfirm').disabled = true;
     try {
